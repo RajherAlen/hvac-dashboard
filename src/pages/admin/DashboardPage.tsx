@@ -1,7 +1,8 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Clock, Users, ClipboardList, TrendingUp,
   ChevronLeft, ChevronRight, Download, MapPin,
+  ChevronDown, User, FileText,
 } from 'lucide-react';
 import {
   format,
@@ -16,16 +17,33 @@ import { HoursChart } from '../../components/HoursChart';
 import { useWorkLogs } from '../../hooks/useWorkLogs';
 import { useEmployees } from '../../hooks/useEmployees';
 import { todayISO, formatHours } from '../../lib/utils';
-import { exportDashboardPdf } from '../../lib/exportPdf';
+import {
+  exportDashboardPdf,
+  exportEmployeePdf,
+  exportMonthPerEmployeePdf,
+} from '../../lib/exportPdf';
 
 type PeriodMode = 'week' | 'month';
 
 export function AdminDashboardPage() {
   const [periodMode, setPeriodMode] = useState<PeriodMode>('week');
   const [periodOffset, setPeriodOffset] = useState(0);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   const today = todayISO();
 
-  // Compute date range from mode + offset
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setShowExportMenu(false);
+      }
+    }
+    if (showExportMenu) document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showExportMenu]);
+
+  // Compute selected period range
   const { startDate, endDate, periodDays, periodLabel } = useMemo(() => {
     const now = new Date();
     let start: Date, end: Date;
@@ -54,17 +72,35 @@ export function AdminDashboardPage() {
     };
   }, [periodMode, periodOffset]);
 
+  // Compute the full month containing the selected period (for "full month" exports)
+  const { monthStart, monthEnd, monthLabel } = useMemo(() => {
+    const now = new Date();
+    let ref: Date;
+    if (periodMode === 'week') {
+      const weekRef = addWeeks(now, periodOffset);
+      ref = startOfWeek(weekRef, { weekStartsOn: 1 });
+    } else {
+      ref = addMonths(now, periodOffset);
+    }
+    const ms = startOfMonth(ref);
+    const me = endOfMonth(ref);
+    return {
+      monthStart: format(ms, 'yyyy-MM-dd'),
+      monthEnd:   format(me, 'yyyy-MM-dd'),
+      monthLabel: format(ms, 'LLLL yyyy', { locale: hr }),
+    };
+  }, [periodMode, periodOffset]);
+
   const { data: periodLogs = [], isLoading } = useWorkLogs({ startDate, endDate });
-  const { data: employees = [] }             = useEmployees();
-  const { data: todayLogs = [] }             = useWorkLogs({ startDate: today, endDate: today });
+  const { data: monthLogs  = [] }            = useWorkLogs({ startDate: monthStart, endDate: monthEnd });
+  const { data: employees  = [] }            = useEmployees();
+  const { data: todayLogs  = [] }            = useWorkLogs({ startDate: today, endDate: today });
 
   // Stats
   const totalHours    = periodLogs.reduce((s, l) => s + Number(l.hours_worked), 0);
   const activeToday   = new Set(todayLogs.map(l => l.employee_id)).size;
   const periodEntries = periodLogs.length;
   const avgPerDay     = periodDays.length > 0 ? totalHours / periodDays.length : 0;
-
-  const handleExport = () => exportDashboardPdf(periodLogs, employees, periodLabel);
 
   return (
     <div className="p-6 space-y-6">
@@ -110,14 +146,73 @@ export function AdminDashboardPage() {
             </button>
           </div>
 
-          {/* PDF export */}
-          <button
-            onClick={handleExport}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg transition-colors"
-          >
-            <Download size={15} />
-            Izvezi PDF
-          </button>
+          {/* PDF export dropdown */}
+          <div className="relative" ref={menuRef}>
+            <button
+              onClick={() => setShowExportMenu(v => !v)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg transition-colors"
+            >
+              <Download size={15} />
+              Izvezi PDF
+              <ChevronDown size={13} className={`transition-transform ${showExportMenu ? 'rotate-180' : ''}`} />
+            </button>
+
+            {showExportMenu && (
+              <div className="absolute right-0 mt-1 w-64 bg-white border border-slate-200 rounded-xl shadow-lg z-20 py-2">
+
+                {/* ── Current period ── */}
+                <p className="px-3 pt-1 pb-1.5 text-xs font-semibold text-slate-400 uppercase tracking-wider capitalize">
+                  {periodLabel}
+                </p>
+
+                {/* All employees — current period */}
+                <button
+                  onClick={() => { exportDashboardPdf(periodLogs, employees, periodLabel); setShowExportMenu(false); }}
+                  className="flex items-center gap-2 w-full px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  <FileText size={14} className="text-slate-400 shrink-0" />
+                  Svi zaposlenici
+                </button>
+
+                {/* One button per employee — current period */}
+                {employees.map(emp => (
+                  <button
+                    key={emp.id}
+                    onClick={() => { exportEmployeePdf(periodLogs, emp, periodLabel); setShowExportMenu(false); }}
+                    className="flex items-center gap-2 w-full px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 transition-colors pl-6"
+                  >
+                    <User size={13} className="text-slate-400 shrink-0" />
+                    {emp.full_name}
+                  </button>
+                ))}
+
+                <div className="my-2 border-t border-slate-100" />
+
+                {/* ── Full month ── */}
+                <p className="px-3 pt-1 pb-1.5 text-xs font-semibold text-slate-400 uppercase tracking-wider capitalize">
+                  {monthLabel} (cijeli mjesec)
+                </p>
+
+                {/* All employees — full month */}
+                <button
+                  onClick={() => { exportDashboardPdf(monthLogs, employees, monthLabel); setShowExportMenu(false); }}
+                  className="flex items-center gap-2 w-full px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  <FileText size={14} className="text-slate-400 shrink-0" />
+                  Svi zaposlenici
+                </button>
+
+                {/* Per-employee sections — full month */}
+                <button
+                  onClick={() => { exportMonthPerEmployeePdf(monthLogs, employees, monthLabel); setShowExportMenu(false); }}
+                  className="flex items-center gap-2 w-full px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  <FileText size={14} className="text-slate-400 shrink-0" />
+                  Po zaposleniku (zasebne stranice)
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
