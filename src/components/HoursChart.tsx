@@ -16,6 +16,7 @@ import { getLast7Days } from '../lib/utils';
 interface HoursChartProps {
   logs: WorkLog[];
   employees?: Profile[];
+  days?: string[];
   mode?: 'stacked' | 'simple';
   title?: string;
 }
@@ -28,31 +29,54 @@ const COLORS = [
 export function HoursChart({
   logs,
   employees = [],
+  days: propDays,
   mode = 'simple',
   title = 'Sati po danu (zadnjih 7 dana)',
 }: HoursChartProps) {
-  const days = getLast7Days();
+  const days = propDays ?? getLast7Days();
+  const isMonthView = days.length > 10;
 
-  // Build chart data
-  const data = days.map(day => {
-    const dayLogs = logs.filter(l => l.log_date === day);
-    const entry: Record<string, string | number> = {
-      date: day,
-      label: format(parseISO(day), 'EEE dd/MM', { locale: hr }),
-      total: dayLogs.reduce((s, l) => s + Number(l.hours_worked), 0),
-    };
-
-    if (mode === 'stacked' && employees.length > 0) {
-      employees.forEach(emp => {
-        const empHours = dayLogs
-          .filter(l => l.employee_id === emp.id)
-          .reduce((s, l) => s + Number(l.hours_worked), 0);
-        entry[emp.full_name] = empHours;
+  // Month view: group into weekly chunks for a readable chart
+  const data = isMonthView
+    ? (() => {
+        const chunks: string[][] = [];
+        for (let i = 0; i < days.length; i += 7) {
+          chunks.push(days.slice(i, Math.min(i + 7, days.length)));
+        }
+        return chunks.map(weekDays => {
+          const weekLogs = logs.filter(l => weekDays.includes(l.log_date));
+          const start = format(parseISO(weekDays[0]), 'dd/MM');
+          const end = format(parseISO(weekDays[weekDays.length - 1]), 'dd/MM');
+          const entry: Record<string, string | number> = {
+            label: `${start}–${end}`,
+            total: weekLogs.reduce((s, l) => s + Number(l.hours_worked), 0),
+          };
+          if (mode === 'stacked' && employees.length > 0) {
+            employees.forEach(emp => {
+              entry[emp.full_name] = weekLogs
+                .filter(l => l.employee_id === emp.id)
+                .reduce((s, l) => s + Number(l.hours_worked), 0);
+            });
+          }
+          return entry;
+        });
+      })()
+    : days.map(day => {
+        const dayLogs = logs.filter(l => l.log_date === day);
+        const entry: Record<string, string | number> = {
+          date: day,
+          label: format(parseISO(day), 'EEE dd/MM', { locale: hr }),
+          total: dayLogs.reduce((s, l) => s + Number(l.hours_worked), 0),
+        };
+        if (mode === 'stacked' && employees.length > 0) {
+          employees.forEach(emp => {
+            entry[emp.full_name] = dayLogs
+              .filter(l => l.employee_id === emp.id)
+              .reduce((s, l) => s + Number(l.hours_worked), 0);
+          });
+        }
+        return entry;
       });
-    }
-
-    return entry;
-  });
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">

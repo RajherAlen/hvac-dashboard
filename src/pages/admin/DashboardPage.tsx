@@ -1,64 +1,134 @@
-import { Clock, Users, ClipboardList, TrendingUp } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import {
+  Clock, Users, ClipboardList, TrendingUp,
+  ChevronLeft, ChevronRight, Download, MapPin,
+} from 'lucide-react';
+import {
+  format,
+  startOfWeek, endOfWeek,
+  startOfMonth, endOfMonth,
+  addWeeks, addMonths,
+  eachDayOfInterval,
+} from 'date-fns';
+import { hr } from 'date-fns/locale';
 import { StatCard } from '../../components/StatCard';
 import { HoursChart } from '../../components/HoursChart';
 import { useWorkLogs } from '../../hooks/useWorkLogs';
 import { useEmployees } from '../../hooks/useEmployees';
-import { getCurrentWeekRange, getLast7Days, todayISO, formatHours } from '../../lib/utils';
-import { format, parseISO, startOfMonth, endOfMonth } from 'date-fns';
-import { hr } from 'date-fns/locale';
-import { MapPin } from 'lucide-react';
+import { todayISO, formatHours } from '../../lib/utils';
+import { exportDashboardPdf } from '../../lib/exportPdf';
+
+type PeriodMode = 'week' | 'month';
 
 export function AdminDashboardPage() {
-  const { start: weekStart, end: weekEnd } = getCurrentWeekRange();
+  const [periodMode, setPeriodMode] = useState<PeriodMode>('week');
+  const [periodOffset, setPeriodOffset] = useState(0);
   const today = todayISO();
-  const last7 = getLast7Days();
-  const monthStart = format(startOfMonth(new Date()), 'yyyy-MM-dd');
-  const monthEnd   = format(endOfMonth(new Date()), 'yyyy-MM-dd');
 
-  const { data: weekLogs = [], isLoading: weekLoading } = useWorkLogs({
-    startDate: weekStart,
-    endDate: weekEnd,
-  });
+  // Compute date range from mode + offset
+  const { startDate, endDate, periodDays, periodLabel } = useMemo(() => {
+    const now = new Date();
+    let start: Date, end: Date;
 
-  const { data: last7Logs = [] } = useWorkLogs({
-    startDate: last7[0],
-    endDate: last7[6],
-  });
+    if (periodMode === 'week') {
+      const ref = addWeeks(now, periodOffset);
+      start = startOfWeek(ref, { weekStartsOn: 1 });
+      end   = endOfWeek(ref,   { weekStartsOn: 1 });
+    } else {
+      const ref = addMonths(now, periodOffset);
+      start = startOfMonth(ref);
+      end   = endOfMonth(ref);
+    }
 
-  const { data: monthLogs = [] } = useWorkLogs({
-    startDate: monthStart,
-    endDate: monthEnd,
-  });
+    const days = eachDayOfInterval({ start, end }).map(d => format(d, 'yyyy-MM-dd'));
+    const label =
+      periodMode === 'week'
+        ? `${format(start, 'd MMM', { locale: hr })} – ${format(end, 'd MMM yyyy', { locale: hr })}`
+        : format(start, 'LLLL yyyy', { locale: hr });
 
-  const { data: employees = [] } = useEmployees();
-  const { data: todayLogs = [] } = useWorkLogs({ startDate: today, endDate: today });
+    return {
+      startDate: format(start, 'yyyy-MM-dd'),
+      endDate:   format(end,   'yyyy-MM-dd'),
+      periodDays: days,
+      periodLabel: label,
+    };
+  }, [periodMode, periodOffset]);
+
+  const { data: periodLogs = [], isLoading } = useWorkLogs({ startDate, endDate });
+  const { data: employees = [] }             = useEmployees();
+  const { data: todayLogs = [] }             = useWorkLogs({ startDate: today, endDate: today });
 
   // Stats
-  const totalWeekHours = weekLogs.reduce((s, l) => s + Number(l.hours_worked), 0);
-  const activeToday = new Set(todayLogs.map(l => l.employee_id)).size;
-  const monthEntries = monthLogs.length;
-  const avgHoursPerDay = last7Logs.length > 0
-    ? last7Logs.reduce((s, l) => s + Number(l.hours_worked), 0) / 7
-    : 0;
+  const totalHours    = periodLogs.reduce((s, l) => s + Number(l.hours_worked), 0);
+  const activeToday   = new Set(todayLogs.map(l => l.employee_id)).size;
+  const periodEntries = periodLogs.length;
+  const avgPerDay     = periodDays.length > 0 ? totalHours / periodDays.length : 0;
+
+  const handleExport = () => exportDashboardPdf(periodLogs, employees, periodLabel);
 
   return (
     <div className="p-6 space-y-6">
-      {/* Page header */}
-      <div>
+      {/* Header + controls */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-bold text-slate-900">Pregled</h1>
-        <p className="text-sm text-slate-500 mt-0.5">
-          Tjedan od {format(parseISO(weekStart), 'd MMM', { locale: hr })} – {format(parseISO(weekEnd), 'd MMM yyyy', { locale: hr })}
-        </p>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Week / Month toggle */}
+          <div className="flex rounded-lg border border-slate-200 overflow-hidden bg-white text-sm">
+            {(['week', 'month'] as PeriodMode[]).map(m => (
+              <button
+                key={m}
+                onClick={() => { setPeriodMode(m); setPeriodOffset(0); }}
+                className={`px-3 py-1.5 font-medium transition-colors ${
+                  periodMode === m
+                    ? 'bg-blue-600 text-white'
+                    : 'text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                {m === 'week' ? 'Tjedan' : 'Mjesec'}
+              </button>
+            ))}
+          </div>
+
+          {/* Period navigation */}
+          <div className="flex items-center bg-white border border-slate-200 rounded-lg text-sm">
+            <button
+              onClick={() => setPeriodOffset(o => o - 1)}
+              className="p-1.5 text-slate-500 hover:bg-slate-50 hover:text-slate-800 transition-colors rounded-l-lg"
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <span className="px-3 font-medium text-slate-700 min-w-[150px] text-center capitalize">
+              {periodLabel}
+            </span>
+            <button
+              onClick={() => setPeriodOffset(o => Math.min(o + 1, 0))}
+              disabled={periodOffset === 0}
+              className="p-1.5 text-slate-500 hover:bg-slate-50 hover:text-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors rounded-r-lg"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+
+          {/* PDF export */}
+          <button
+            onClick={handleExport}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg transition-colors"
+          >
+            <Download size={15} />
+            Izvezi PDF
+          </button>
+        </div>
       </div>
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
-          title="Sati ovog tjedna"
-          value={formatHours(totalWeekHours)}
+          title={periodMode === 'week' ? 'Sati u tjednu' : 'Sati u mjesecu'}
+          value={formatHours(totalHours)}
           icon={Clock}
           color="blue"
-          isLoading={weekLoading}
+          isLoading={isLoading}
         />
         <StatCard
           title="Aktivni danas"
@@ -68,32 +138,44 @@ export function AdminDashboardPage() {
           color="green"
         />
         <StatCard
-          title="Unosi ovog mjeseca"
-          value={monthEntries}
+          title="Unosi u periodu"
+          value={periodEntries}
           icon={ClipboardList}
           color="amber"
+          isLoading={isLoading}
         />
         <StatCard
           title="Prosj. sati / dan"
-          value={formatHours(avgHoursPerDay)}
-          subtitle="zadnjih 7 dana"
+          value={formatHours(avgPerDay)}
+          subtitle={`u ${periodMode === 'week' ? 'tjednu' : 'mjesecu'}`}
           icon={TrendingUp}
           color="purple"
+          isLoading={isLoading}
         />
       </div>
 
-      {/* Chart */}
+      {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <HoursChart
-          logs={last7Logs}
+          logs={periodLogs}
+          days={periodDays}
           mode="simple"
-          title="Ukupni sati — zadnjih 7 dana"
+          title={
+            periodMode === 'week'
+              ? 'Ukupni sati — po danu'
+              : 'Ukupni sati — po tjednu'
+          }
         />
         <HoursChart
-          logs={last7Logs}
+          logs={periodLogs}
           employees={employees}
+          days={periodDays}
           mode="stacked"
-          title="Po zaposleniku — zadnjih 7 dana"
+          title={
+            periodMode === 'week'
+              ? 'Po zaposleniku — tjedan'
+              : 'Po zaposleniku — mjesec'
+          }
         />
       </div>
 
@@ -101,18 +183,21 @@ export function AdminDashboardPage() {
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="px-5 py-4 border-b border-slate-100">
           <h2 className="text-sm font-semibold text-slate-800">Današnja aktivnost</h2>
-          <p className="text-xs text-slate-400 mt-0.5">{format(new Date(), 'EEEE, d MMMM yyyy', { locale: hr })}</p>
+          <p className="text-xs text-slate-400 mt-0.5">
+            {format(new Date(), 'EEEE, d MMMM yyyy', { locale: hr })}
+          </p>
         </div>
 
         {todayLogs.length === 0 ? (
-          <p className="py-10 text-center text-sm text-slate-400">Danas još nema evidentiranih radova.</p>
+          <p className="py-10 text-center text-sm text-slate-400">
+            Danas još nema evidentiranih radova.
+          </p>
         ) : (
           <div className="divide-y divide-slate-100">
             {todayLogs.map(log => {
               const emp = (log as any).profiles;
               return (
                 <div key={log.id} className="flex items-start gap-4 px-5 py-3.5">
-                  {/* Avatar */}
                   <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
                     <span className="text-xs font-bold text-blue-600">
                       {emp?.full_name?.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase() ?? '?'}
@@ -120,7 +205,7 @@ export function AdminDashboardPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-medium text-slate-800">{emp?.full_name ?? 'Unknown'}</p>
+                      <p className="text-sm font-medium text-slate-800">{emp?.full_name ?? '—'}</p>
                       <span className="text-sm font-semibold text-blue-600 flex-shrink-0">
                         {formatHours(Number(log.hours_worked))}
                       </span>
