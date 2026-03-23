@@ -4,58 +4,18 @@ import type { WorkLog, Profile } from '../types';
 
 // ─── Shared helpers ────────────────────────────────────────────────────────
 
-const TOOLBAR_HTML = `
-<div class="no-print" style="
-  position:fixed;top:0;left:0;right:0;
-  background:#fff;border-bottom:1px solid #e2e8f0;
-  padding:10px 32px;display:flex;align-items:center;gap:10px;
-  z-index:9999;box-shadow:0 2px 12px rgba(0,0,0,.08);
-">
-  <span style="flex:1;font-size:13px;font-weight:600;color:#1e293b;">HVAC Dashboard — Izvješće</span>
-
-  <button onclick="window.print()" style="
-    display:flex;align-items:center;gap:6px;
-    padding:8px 16px;background:#f1f5f9;color:#475569;
-    border:1px solid #e2e8f0;border-radius:8px;
-    font-size:13px;font-weight:600;cursor:pointer;
-  ">
-    🖨️&nbsp; Ispiši
-  </button>
-
-  <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
-    <button onclick="window.print()" style="
-      display:flex;align-items:center;gap:6px;
-      padding:8px 16px;background:#3b82f6;color:#fff;
-      border:none;border-radius:8px;
-      font-size:13px;font-weight:600;cursor:pointer;
-    ">
-      ⬇️&nbsp; Spremi kao PDF
-    </button>
-    <span style="font-size:10px;color:#94a3b8;">U tisku odaberi „Spremi kao PDF"</span>
-  </div>
-
-  <button onclick="window.close()" style="
-    padding:8px 14px;background:#fff;color:#94a3b8;
-    border:1px solid #e2e8f0;border-radius:8px;
-    font-size:13px;cursor:pointer;
-  ">✕</button>
-</div>
-<div class="no-print" style="height:72px;"></div>
-`;
-
 function openPrintWindow(html: string) {
   const win = window.open('', '_blank');
   if (win) {
-    // Inject toolbar before </body> — no auto-print, user chooses
-    win.document.write(html.replace('</body>', TOOLBAR_HTML + '</body>'));
+    win.document.write(html);
     win.document.close();
+    setTimeout(() => win.print(), 400);
   }
 }
 
 const baseStyles = `
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: system-ui, -apple-system, sans-serif; padding: 32px; color: #1e293b; font-size: 13px; }
-  @media print { .no-print { display: none !important; } }
   .header { margin-bottom: 24px; border-bottom: 2px solid #3b82f6; padding-bottom: 16px; }
   .header h1 { font-size: 22px; font-weight: 700; }
   .header p { color: #64748b; margin-top: 4px; }
