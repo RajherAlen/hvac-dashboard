@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -6,8 +7,11 @@ import {
   PlusCircle,
   LogOut,
   Wind,
+  UserCircle,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import { useEmployee } from '../../hooks/useEmployees';
+import { EditProfileModal } from '../EditProfileModal';
 import { cn } from '../../lib/utils';
 
 interface SidebarProps {
@@ -27,6 +31,8 @@ const employeeLinks = [
 
 export function Sidebar({ onClose }: SidebarProps) {
   const { role, user, signOut } = useAuth();
+  const { data: profile } = useEmployee(user?.id);
+  const [showProfile, setShowProfile] = useState(false);
   const links = role === 'admin' ? adminLinks : employeeLinks;
 
   return (
@@ -68,10 +74,22 @@ export function Sidebar({ onClose }: SidebarProps) {
       </nav>
 
       {/* User + sign out */}
-      <div className="px-3 py-4 border-t border-slate-700">
-        <div className="px-3 py-2 mb-2">
-          <p className="text-sm font-medium text-white truncate">{user?.email}</p>
-        </div>
+      <div className="px-3 py-4 border-t border-slate-700 space-y-1">
+        {/* Profile button */}
+        <button
+          onClick={() => setShowProfile(true)}
+          className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
+        >
+          <UserCircle size={18} className="shrink-0" />
+          <div className="text-left overflow-hidden">
+            <p className="font-medium text-white truncate leading-tight">
+              {profile?.full_name ?? user?.email}
+            </p>
+            <p className="text-xs text-slate-400">Uredi profil</p>
+          </div>
+        </button>
+
+        {/* Sign out */}
         <button
           onClick={signOut}
           className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
@@ -80,6 +98,8 @@ export function Sidebar({ onClose }: SidebarProps) {
           Odjava
         </button>
       </div>
+
+      {showProfile && <EditProfileModal onClose={() => setShowProfile(false)} />}
     </aside>
   );
 }
