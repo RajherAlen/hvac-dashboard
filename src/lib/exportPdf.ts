@@ -100,7 +100,7 @@ export function exportDashboardPdf(
   <table>
     <thead>
       <tr>
-        <th>Datum</th><th>Zaposlenik</th><th>Opis zadatka</th><th>Lokacija</th><th>Sati</th>
+        <th>Datum</th><th>Zaposlenik</th><th>Opis zadatka</th><th>Lokacija</th><th>Napomena</th><th>Sati</th>
       </tr>
     </thead>
     <tbody>
@@ -111,6 +111,7 @@ export function exportDashboardPdf(
           <td>${emp?.full_name ?? '—'}</td>
           <td>${log.task_description}</td>
           <td>${log.location}</td>
+          <td style="color:#64748b">${log.notes ?? ''}</td>
           <td class="hours">${formatHours(Number(log.hours_worked))}</td>
         </tr>`;
       }).join('')}
@@ -167,7 +168,7 @@ export function exportEmployeePdf(
     : `<table>
     <thead>
       <tr>
-        <th>Datum</th><th>Opis zadatka</th><th>Lokacija</th><th>Sati</th>
+        <th>Datum</th><th>Opis zadatka</th><th>Lokacija</th><th>Napomena</th><th>Sati</th>
       </tr>
     </thead>
     <tbody>
@@ -175,6 +176,7 @@ export function exportEmployeePdf(
         <td style="white-space:nowrap">${format(parseISO(log.log_date), 'dd.MM.yyyy')}</td>
         <td>${log.task_description}</td>
         <td>${log.location}</td>
+        <td style="color:#64748b">${log.notes ?? ''}</td>
         <td class="hours">${formatHours(Number(log.hours_worked))}</td>
       </tr>`).join('')}
     </tbody>
@@ -223,7 +225,7 @@ export function exportMonthPerEmployeePdf(
         : `<table>
         <thead>
           <tr>
-            <th>Datum</th><th>Opis zadatka</th><th>Lokacija</th><th>Sati</th>
+            <th>Datum</th><th>Opis zadatka</th><th>Lokacija</th><th>Napomena</th><th>Sati</th>
           </tr>
         </thead>
         <tbody>
@@ -231,6 +233,7 @@ export function exportMonthPerEmployeePdf(
             <td style="white-space:nowrap">${format(parseISO(log.log_date), 'dd.MM.yyyy')}</td>
             <td>${log.task_description}</td>
             <td>${log.location}</td>
+            <td style="color:#64748b">${log.notes ?? ''}</td>
             <td class="hours">${formatHours(Number(log.hours_worked))}</td>
           </tr>`).join('')}
         </tbody>
@@ -252,7 +255,7 @@ export function exportMonthPerEmployeePdf(
 <body>
   <!-- Cover summary -->
   <div class="header">
-    <h1>HVAC Dashboard — Miesečno izvješće po zaposlenicima</h1>
+    <h1>HVAC Dashboard — Mjesečno izvješće po zaposlenicima</h1>
     <p>Period: <strong>${monthLabel}</strong></p>
     <p>Generirano: ${format(new Date(), 'dd.MM.yyyy HH:mm')}</p>
   </div>
