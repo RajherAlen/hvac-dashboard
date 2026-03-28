@@ -13,6 +13,7 @@ import { AppShell } from './components/layout/AppShell';
 
 // Pages
 import { LoginPage } from './pages/auth/LoginPage';
+import { AcceptInvitePage } from './pages/auth/AcceptInvitePage';
 import { AdminDashboardPage } from './pages/admin/DashboardPage';
 import { AdminEmployeesPage } from './pages/admin/EmployeesPage';
 import { AdminEmployeeDetailPage } from './pages/admin/EmployeeDetailPage';
@@ -65,6 +66,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={loginRedirect ? <Navigate to={loginRedirect} replace /> : <LoginPage />} />
+      <Route path="/accept-invite" element={<AcceptInvitePage />} />
       <Route path="/" element={<RootRedirect />} />
 
       {/* Admin */}
