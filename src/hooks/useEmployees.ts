@@ -37,6 +37,23 @@ export interface CreateEmployeePayload {
   role: 'admin' | 'employee';
 }
 
+export function useDeleteEmployee() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (employeeId: string) => {
+      const { data, error } = await supabase.functions.invoke('delete-employee', {
+        body: { employee_id: employeeId },
+      });
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+      return data;
+    },
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: ['employees'] });
+    },
+  });
+}
+
 export function useCreateEmployee() {
   const client = useQueryClient();
   return useMutation({

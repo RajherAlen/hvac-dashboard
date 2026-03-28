@@ -1,7 +1,7 @@
-import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Phone, Mail, PlusCircle, Calendar } from 'lucide-react';
-import { useEmployee } from '../../hooks/useEmployees';
+import { useState, useMemo } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { ArrowLeft, Phone, Mail, PlusCircle, Calendar, Trash2 } from 'lucide-react';
+import { useEmployee, useDeleteEmployee } from '../../hooks/useEmployees';
 import { useWorkLogs } from '../../hooks/useWorkLogs';
 import { HoursChart } from '../../components/HoursChart';
 import { EmployeeTimeline } from '../../components/EmployeeTimeline';
@@ -14,17 +14,35 @@ import {
   formatHours,
   todayISO,
 } from '../../lib/utils';
-import { format, subDays } from 'date-fns';
+import { format, startOfMonth, subDays } from 'date-fns';
+
+type FilterMode = 'week' | 'month' | 'custom';
 
 export function AdminEmployeeDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [showForm, setShowForm] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const deleteEmployee = useDeleteEmployee();
 
-  // Date range state — default last 30 days
-  const defaultEnd = todayISO();
-  const defaultStart = format(subDays(new Date(), 29), 'yyyy-MM-dd');
-  const [startDate, setStartDate] = useState(defaultStart);
-  const [endDate, setEndDate] = useState(defaultEnd);
+  // Filter state
+  const [filterMode, setFilterMode] = useState<FilterMode>('month');
+  const [customStart, setCustomStart] = useState(format(subDays(new Date(), 29), 'yyyy-MM-dd'));
+  const [customEnd, setCustomEnd] = useState(todayISO());
+
+  const { startDate, endDate } = useMemo(() => {
+    if (filterMode === 'week') {
+      const { start, end } = getCurrentWeekRange();
+      return { startDate: start, endDate: end };
+    }
+    if (filterMode === 'month') {
+      return {
+        startDate: format(startOfMonth(new Date()), 'yyyy-MM-dd'),
+        endDate: todayISO(),
+      };
+    }
+    return { startDate: customStart, endDate: customEnd };
+  }, [filterMode, customStart, customEnd]);
 
   const { data: employee, isLoading: empLoading } = useEmployee(id);
   const { data: logs = [], isLoading: logsLoading } = useWorkLogs({
@@ -42,6 +60,12 @@ export function AdminEmployeeDetailPage() {
   const weekHours = weekLogs.reduce((s, l) => s + Number(l.hours_worked), 0);
   const todayHours = todayLogs.reduce((s, l) => s + Number(l.hours_worked), 0);
   const totalLogs = logs.length;
+
+  const handleDelete = async () => {
+    if (!id) return;
+    await deleteEmployee.mutateAsync(id);
+    navigate('/admin/employees', { replace: true });
+  };
 
   if (empLoading) {
     return (
@@ -91,21 +115,57 @@ export function AdminEmployeeDetailPage() {
             </div>
           </div>
 
-          <button
-            onClick={() => setShowForm(true)}
-            className="hidden sm:flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
-          >
-            <PlusCircle size={15} />
-            Dodaj unos
-          </button>
+          <div className="hidden sm:flex items-center gap-2">
+            <button
+              onClick={() => setShowForm(true)}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+            >
+              <PlusCircle size={15} />
+              Dodaj unos
+            </button>
+
+            {showDeleteConfirm ? (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-red-600 font-medium">Obrisati zaposlenika?</span>
+                <button
+                  onClick={handleDelete}
+                  disabled={deleteEmployee.isPending}
+                  className="px-3 py-2 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-60 rounded-lg transition-colors"
+                >
+                  {deleteEmployee.isPending ? 'Brisanje...' : 'Da, obriši'}
+                </button>
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="px-3 py-2 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                >
+                  Odustani
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 border border-red-200 rounded-lg transition-colors"
+              >
+                <Trash2 size={15} />
+                Obriši
+              </button>
+            )}
+          </div>
         </div>
+
+        {/* Error */}
+        {deleteEmployee.error && (
+          <p className="mt-3 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">
+            {(deleteEmployee.error as Error).message}
+          </p>
+        )}
       </div>
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-        <StatCard title="Sati danas"        value={formatHours(todayHours)}  icon={Clock}         color="blue" />
-        <StatCard title="Ovaj tjedan"       value={formatHours(weekHours)}   icon={Clock}         color="green" />
-        <StatCard title="Unosi u rasponu"   value={totalLogs}                icon={ClipboardList} color="amber" />
+        <StatCard title="Sati danas"      value={formatHours(todayHours)} icon={Clock}         color="blue" />
+        <StatCard title="Ovaj tjedan"     value={formatHours(weekHours)}  icon={Clock}         color="green" />
+        <StatCard title="Unosi u rasponu" value={totalLogs}               icon={ClipboardList} color="amber" />
       </div>
 
       {/* Chart */}
@@ -115,25 +175,46 @@ export function AdminEmployeeDetailPage() {
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="px-5 py-4 border-b border-slate-100 flex flex-wrap items-center gap-3">
           <h2 className="text-sm font-semibold text-slate-800 flex-1">Povijest radnih sati</h2>
-          <div className="flex items-center gap-2">
-            <Calendar size={14} className="text-slate-400" />
-            <input
-              type="date"
-              value={startDate}
-              max={endDate}
-              onChange={e => setStartDate(e.target.value)}
-              className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <span className="text-xs text-slate-400">do</span>
-            <input
-              type="date"
-              value={endDate}
-              min={startDate}
-              max={todayISO()}
-              onChange={e => setEndDate(e.target.value)}
-              className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+
+          {/* Period presets */}
+          <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
+            {(['week', 'month', 'custom'] as FilterMode[]).map(mode => (
+              <button
+                key={mode}
+                onClick={() => setFilterMode(mode)}
+                className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                  filterMode === mode
+                    ? 'bg-white text-slate-800 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                {mode === 'week' ? 'Ovaj tjedan' : mode === 'month' ? 'Ovaj mjesec' : 'Prilagođeno'}
+              </button>
+            ))}
           </div>
+
+          {/* Custom date pickers */}
+          {filterMode === 'custom' && (
+            <div className="flex items-center gap-2">
+              <Calendar size={14} className="text-slate-400" />
+              <input
+                type="date"
+                value={customStart}
+                max={customEnd}
+                onChange={e => setCustomStart(e.target.value)}
+                className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <span className="text-xs text-slate-400">do</span>
+              <input
+                type="date"
+                value={customEnd}
+                min={customStart}
+                max={todayISO()}
+                onChange={e => setCustomEnd(e.target.value)}
+                className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          )}
         </div>
 
         <div className="p-5">
