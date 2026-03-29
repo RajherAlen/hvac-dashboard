@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { format, startOfWeek, endOfWeek, eachDayOfInterval, parseISO } from 'date-fns';
+import { format, startOfWeek, endOfWeek, eachDayOfInterval, parseISO, startOfMonth, endOfMonth } from 'date-fns';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -46,4 +46,12 @@ export function getWeekDays(weekStart: Date): string[] {
 
 export function todayISO(): string {
   return format(new Date(), 'yyyy-MM-dd');
+}
+
+export function getCurrentMonthRange(): { start: string; end: string } {
+  const now = new Date();
+  return {
+    start: format(startOfMonth(now), 'yyyy-MM-dd'),
+    end: format(endOfMonth(now), 'yyyy-MM-dd'),
+  };
 }

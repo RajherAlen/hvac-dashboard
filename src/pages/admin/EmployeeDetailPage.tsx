@@ -14,11 +14,6 @@ import { format, startOfMonth, subDays } from 'date-fns';
 
 type FilterMode = 'week' | 'month' | 'custom';
 
-const FILTER_LABELS: Record<FilterMode, string> = {
-  week: 'Ovaj tjedan',
-  month: 'Ovaj mjesec',
-  custom: 'Prilagođeno',
-};
 
 export function AdminEmployeeDetailPage() {
   const { id } = useParams<{ id: string }>();
