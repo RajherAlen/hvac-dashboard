@@ -17,20 +17,21 @@ export function AdminEmployeesPage() {
   });
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-start justify-between">
+    <div className="px-4 py-4 sm:p-6 space-y-4 sm:space-y-6">
+      <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">Zaposlenici</h1>
+          <h1 className="text-lg sm:text-xl font-bold text-slate-900">Zaposlenici</h1>
           <p className="text-sm text-slate-500 mt-0.5">
             {employees.length} zaposlenik{employees.length === 1 ? '' : 'a'} — kliknite red za detalje
           </p>
         </div>
         <button
           onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+          className="flex items-center gap-2 px-3 sm:px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-lg transition-colors shrink-0"
         >
           <PlusCircle size={15} />
-          Novi zaposlenik
+          <span className="hidden sm:inline">Novi zaposlenik</span>
+          <span className="sm:hidden">Novi</span>
         </button>
       </div>
 
