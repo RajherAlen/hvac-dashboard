@@ -112,67 +112,6 @@ export function AdminDashboardPage() {
   const periodEntries = periodLogs.length;
   const avgPerDay     = periodDays.length > 0 ? totalHours / periodDays.length : 0;
 
-  const exportMenuContent = (onAction: () => void) => (
-    <>
-      {/* ── Current period ── */}
-      <p className="px-4 pt-2 pb-1.5 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-        {periodLabel}
-      </p>
-
-      <button
-        onClick={() => { exportDashboardPdf(periodLogs, employees, periodLabel); onAction(); }}
-        className="flex items-center gap-3 w-full px-4 py-3 sm:py-2 text-sm text-slate-700 hover:bg-slate-50 active:bg-slate-100 transition-colors"
-      >
-        <div className="w-8 h-8 sm:w-6 sm:h-6 rounded-lg sm:rounded bg-blue-50 sm:bg-transparent flex items-center justify-center shrink-0">
-          <FileText size={15} className="text-blue-600 sm:text-slate-400" />
-        </div>
-        <span>Svi zaposlenici</span>
-      </button>
-
-      {employees.map(emp => (
-        <button
-          key={emp.id}
-          onClick={() => { exportEmployeePdf(periodLogs, emp, periodLabel); onAction(); }}
-          className="flex items-center gap-3 w-full px-4 py-2.5 sm:py-2 text-sm text-slate-600 hover:bg-slate-50 active:bg-slate-100 transition-colors sm:pl-9"
-        >
-          <div className="w-8 h-8 sm:w-5 sm:h-5 rounded-lg sm:rounded-full bg-slate-100 flex items-center justify-center shrink-0 sm:hidden">
-            <span className="text-xs font-bold text-slate-500">
-              {emp.full_name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-            </span>
-          </div>
-          <User size={13} className="hidden sm:block text-slate-400 shrink-0" />
-          <span>{emp.full_name}</span>
-        </button>
-      ))}
-
-      <div className="my-2 mx-4 border-t border-slate-100" />
-
-      {/* ── Full month ── */}
-      <p className="px-4 pt-1 pb-1.5 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-        {monthLabel} (cijeli mjesec)
-      </p>
-
-      <button
-        onClick={() => { exportDashboardPdf(monthLogs, employees, monthLabel); onAction(); }}
-        className="flex items-center gap-3 w-full px-4 py-3 sm:py-2 text-sm text-slate-700 hover:bg-slate-50 active:bg-slate-100 transition-colors"
-      >
-        <div className="w-8 h-8 sm:w-6 sm:h-6 rounded-lg sm:rounded bg-green-50 sm:bg-transparent flex items-center justify-center shrink-0">
-          <FileText size={15} className="text-green-600 sm:text-slate-400" />
-        </div>
-        <span>Svi zaposlenici</span>
-      </button>
-
-      <button
-        onClick={() => { exportMonthPerEmployeePdf(monthLogs, employees, monthLabel); onAction(); }}
-        className="flex items-center gap-3 w-full px-4 py-3 sm:py-2 text-sm text-slate-700 hover:bg-slate-50 active:bg-slate-100 transition-colors"
-      >
-        <div className="w-8 h-8 sm:w-6 sm:h-6 rounded-lg sm:rounded bg-purple-50 sm:bg-transparent flex items-center justify-center shrink-0">
-          <FileText size={15} className="text-purple-600 sm:text-slate-400" />
-        </div>
-        <span>Po zaposleniku (zasebne stranice)</span>
-      </button>
-    </>
-  );
 
   return (
     <div className="px-4 py-4 sm:p-6 space-y-4 sm:space-y-6">
@@ -233,51 +172,164 @@ export function AdminDashboardPage() {
             {/* Desktop dropdown */}
             {showExportMenu && (
               <div className="hidden sm:block absolute right-0 mt-1 w-72 bg-white border border-slate-200 rounded-xl shadow-lg z-20 py-2 overflow-hidden">
-                {exportMenuContent(() => setShowExportMenu(false))}
+                <p className="px-3 pt-1 pb-1.5 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                  {periodLabel}
+                </p>
+                <button
+                  onClick={() => { exportDashboardPdf(periodLogs, employees, periodLabel); setShowExportMenu(false); }}
+                  className="flex items-center gap-2 w-full px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  <FileText size={14} className="text-slate-400 shrink-0" /> Svi zaposlenici
+                </button>
+                {employees.map(emp => (
+                  <button
+                    key={emp.id}
+                    onClick={() => { exportEmployeePdf(periodLogs, emp, periodLabel); setShowExportMenu(false); }}
+                    className="flex items-center gap-2 w-full px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 transition-colors pl-6"
+                  >
+                    <User size={13} className="text-slate-400 shrink-0" /> {emp.full_name}
+                  </button>
+                ))}
+                <div className="my-2 border-t border-slate-100" />
+                <p className="px-3 pt-1 pb-1.5 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                  {monthLabel} (cijeli mjesec)
+                </p>
+                <button
+                  onClick={() => { exportDashboardPdf(monthLogs, employees, monthLabel); setShowExportMenu(false); }}
+                  className="flex items-center gap-2 w-full px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  <FileText size={14} className="text-slate-400 shrink-0" /> Svi zaposlenici
+                </button>
+                <button
+                  onClick={() => { exportMonthPerEmployeePdf(monthLogs, employees, monthLabel); setShowExportMenu(false); }}
+                  className="flex items-center gap-2 w-full px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  <FileText size={14} className="text-slate-400 shrink-0" /> Po zaposleniku (zasebne stranice)
+                </button>
               </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* Mobile bottom drawer */}
+      {/* Mobile bottom drawer — backdrop catches outside-tap, drawer stops propagation */}
       {showExportMenu && (
-        <div className="sm:hidden fixed inset-0 z-50 flex flex-col justify-end">
-          {/* Backdrop */}
+        <div
+          className="sm:hidden fixed inset-0 z-50 flex flex-col justify-end drawer-backdrop"
+          style={{ background: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(3px)' }}
+          onClick={() => setShowExportMenu(false)}
+        >
+          {/* Drawer panel — stopPropagation prevents the backdrop onClick from firing */}
           <div
-            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-            onClick={() => setShowExportMenu(false)}
-          />
-
-          {/* Drawer panel */}
-          <div className="relative bg-white rounded-t-3xl shadow-2xl max-h-[85dvh] flex flex-col">
-            {/* Handle */}
-            <div className="flex justify-center pt-3 pb-1 shrink-0">
-              <div className="w-10 h-1 rounded-full bg-slate-300" />
+            className="drawer-panel bg-white flex flex-col"
+            style={{
+              borderRadius: '24px 24px 0 0',
+              maxHeight: '88dvh',
+              boxShadow: '0 -8px 40px rgba(15,23,42,0.18)',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Drag handle */}
+            <div className="flex justify-center pt-3 pb-0 shrink-0">
+              <div className="w-9 h-[5px] rounded-full bg-slate-200" />
             </div>
 
             {/* Header */}
-            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center">
-                  <Download size={15} className="text-white" />
+            <div className="flex items-center justify-between px-5 pt-4 pb-3 shrink-0">
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0"
+                  style={{ background: 'linear-gradient(135deg,#2563eb,#4f46e5)' }}
+                >
+                  <Download size={17} className="text-white" />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-slate-800">Izvezi PDF</p>
-                  <p className="text-xs text-slate-400 capitalize">{periodLabel}</p>
+                  <p className="text-[15px] font-bold text-slate-900 leading-tight">Izvezi PDF</p>
+                  <p className="text-xs text-slate-400 mt-0.5">{periodLabel}</p>
                 </div>
               </div>
               <button
                 onClick={() => setShowExportMenu(false)}
-                className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500 active:bg-slate-200 transition-colors"
+                className="w-9 h-9 rounded-2xl bg-slate-100 active:bg-slate-200 flex items-center justify-center text-slate-500 transition-colors"
               >
-                <X size={16} />
+                <X size={17} />
               </button>
             </div>
 
-            {/* Scrollable content */}
-            <div className="overflow-y-auto pb-safe-or-6 py-2">
-              {exportMenuContent(() => setShowExportMenu(false))}
+            {/* Divider */}
+            <div className="h-px bg-slate-100 mx-5 shrink-0" />
+
+            {/* Scrollable list */}
+            <div className="overflow-y-auto overscroll-contain" style={{ paddingBottom: 'max(20px, env(safe-area-inset-bottom))' }}>
+              {/* Section: current period */}
+              <p className="px-5 pt-4 pb-2 text-[10px] font-bold text-slate-400 uppercase tracking-[0.08em]">
+                {periodLabel}
+              </p>
+
+              {/* All employees — period */}
+              <button
+                onClick={() => { exportDashboardPdf(periodLogs, employees, periodLabel); setShowExportMenu(false); }}
+                className="flex items-center gap-3.5 w-full px-5 py-3.5 active:bg-slate-50 transition-colors"
+              >
+                <div className="w-10 h-10 rounded-2xl bg-blue-50 flex items-center justify-center shrink-0">
+                  <FileText size={17} className="text-blue-600" />
+                </div>
+                <div className="text-left">
+                  <p className="text-[14px] font-semibold text-slate-800">Svi zaposlenici</p>
+                  <p className="text-xs text-slate-400 mt-0.5">Jedan PDF za sve</p>
+                </div>
+              </button>
+
+              {/* Per employee — period */}
+              {employees.map(emp => {
+                const initials = emp.full_name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase();
+                return (
+                  <button
+                    key={emp.id}
+                    onClick={() => { exportEmployeePdf(periodLogs, emp, periodLabel); setShowExportMenu(false); }}
+                    className="flex items-center gap-3.5 w-full px-5 py-3 active:bg-slate-50 transition-colors"
+                  >
+                    <div className="w-10 h-10 rounded-2xl bg-slate-100 flex items-center justify-center shrink-0">
+                      <span className="text-xs font-bold text-slate-600">{initials}</span>
+                    </div>
+                    <p className="text-[14px] font-medium text-slate-700">{emp.full_name}</p>
+                  </button>
+                );
+              })}
+
+              {/* Divider + full month section */}
+              <div className="h-px bg-slate-100 mx-5 my-2" />
+              <p className="px-5 pt-2 pb-2 text-[10px] font-bold text-slate-400 uppercase tracking-[0.08em]">
+                {monthLabel} — cijeli mjesec
+              </p>
+
+              {/* All employees — month */}
+              <button
+                onClick={() => { exportDashboardPdf(monthLogs, employees, monthLabel); setShowExportMenu(false); }}
+                className="flex items-center gap-3.5 w-full px-5 py-3.5 active:bg-slate-50 transition-colors"
+              >
+                <div className="w-10 h-10 rounded-2xl bg-emerald-50 flex items-center justify-center shrink-0">
+                  <FileText size={17} className="text-emerald-600" />
+                </div>
+                <div className="text-left">
+                  <p className="text-[14px] font-semibold text-slate-800">Svi zaposlenici</p>
+                  <p className="text-xs text-slate-400 mt-0.5">Cijeli mjesec</p>
+                </div>
+              </button>
+
+              {/* Per employee pages — month */}
+              <button
+                onClick={() => { exportMonthPerEmployeePdf(monthLogs, employees, monthLabel); setShowExportMenu(false); }}
+                className="flex items-center gap-3.5 w-full px-5 py-3.5 active:bg-slate-50 transition-colors"
+              >
+                <div className="w-10 h-10 rounded-2xl bg-violet-50 flex items-center justify-center shrink-0">
+                  <FileText size={17} className="text-violet-600" />
+                </div>
+                <div className="text-left">
+                  <p className="text-[14px] font-semibold text-slate-800">Po zaposleniku</p>
+                  <p className="text-xs text-slate-400 mt-0.5">Zasebne stranice</p>
+                </div>
+              </button>
             </div>
           </div>
         </div>
