@@ -20,6 +20,7 @@ import { AdminEmployeeDetailPage } from './pages/admin/EmployeeDetailPage';
 import { MyDashboardPage } from './pages/employee/MyDashboardPage';
 import { LogWorkPage } from './pages/employee/LogWorkPage';
 import { MyHistoryPage } from './pages/employee/MyHistoryPage';
+import { SuperAdminPage } from './pages/superadmin/SuperAdminPage';
 
 function Spinner() {
   return (
@@ -36,6 +37,7 @@ function RootRedirect() {
   useEffect(() => {
     if (isLoading) return;
     if (!session) navigate('/login', { replace: true });
+    else if (role === 'super_admin') navigate('/superadmin', { replace: true });
     else if (role === 'admin') navigate('/admin/dashboard', { replace: true });
     else navigate('/my/dashboard', { replace: true });
   }, [isLoading, session, role, navigate]);
@@ -54,20 +56,38 @@ function RequireAuth({
 
   if (isLoading) return <Spinner />;
   if (!session) return <Navigate to="/login" replace />;
+  if (role === 'super_admin') return <Navigate to="/superadmin" replace />;
   if (requiredRole === 'admin' && role !== 'admin') return <Navigate to="/my/dashboard" replace />;
+
+  return <>{children}</>;
+}
+
+function RequireSuperAdmin({ children }: { children: React.ReactNode }) {
+  const { session, isSuperAdmin, isLoading } = useAuth();
+
+  if (isLoading) return <Spinner />;
+  if (!session) return <Navigate to="/login" replace />;
+  if (!isSuperAdmin) return <Navigate to="/" replace />;
 
   return <>{children}</>;
 }
 
 function AppRoutes() {
   const { session, role } = useAuth();
-  const loginRedirect = session ? (role === 'admin' ? '/admin/dashboard' : '/my/dashboard') : null;
+  const loginRedirect = session
+    ? role === 'super_admin' ? '/superadmin'
+    : role === 'admin' ? '/admin/dashboard'
+    : '/my/dashboard'
+    : null;
 
   return (
     <Routes>
       <Route path="/login" element={loginRedirect ? <Navigate to={loginRedirect} replace /> : <LoginPage />} />
       <Route path="/accept-invite" element={<AcceptInvitePage />} />
       <Route path="/" element={<RootRedirect />} />
+
+      {/* Super Admin */}
+      <Route path="/superadmin" element={<RequireSuperAdmin><SuperAdminPage /></RequireSuperAdmin>} />
 
       {/* Admin */}
       <Route element={<RequireAuth requiredRole="admin"><AppShell /></RequireAuth>}>

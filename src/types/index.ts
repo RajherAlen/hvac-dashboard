@@ -2,7 +2,8 @@ import type { Tables } from './database';
 
 export type Profile = Tables<'profiles'>;
 export type WorkLog = Tables<'work_logs'>;
-export type Role = 'admin' | 'employee';
+export type Company = Tables<'companies'>;
+export type Role = 'admin' | 'employee' | 'super_admin';
 
 export interface WorkLogWithEmployee extends WorkLog {
   profiles?: Partial<Profile> | null;

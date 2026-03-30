@@ -54,6 +54,24 @@ export function useDeleteEmployee() {
   });
 }
 
+export function useDeactivateEmployee() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ employeeId, active }: { employeeId: string; active: boolean }) => {
+      const { data, error } = await supabase.functions.invoke('deactivate-employee', {
+        body: { employee_id: employeeId, active },
+      });
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+      return data;
+    },
+    onSuccess: (_data, { employeeId }) => {
+      client.invalidateQueries({ queryKey: ['employees'] });
+      client.invalidateQueries({ queryKey: ['employees', employeeId] });
+    },
+  });
+}
+
 export function useCreateEmployee() {
   const client = useQueryClient();
   return useMutation({

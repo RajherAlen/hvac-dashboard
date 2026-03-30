@@ -28,7 +28,7 @@ interface WorkLogFormProps {
 }
 
 export function WorkLogForm({ editLog, onClose, employeeId }: WorkLogFormProps) {
-  const { user } = useAuth();
+  const { user, companyId } = useAuth();
   const addLog = useAddWorkLog();
   const updateLog = useUpdateWorkLog();
 
@@ -67,6 +67,7 @@ export function WorkLogForm({ editLog, onClose, employeeId }: WorkLogFormProps) 
       await addLog.mutateAsync({
         ...values,
         employee_id: employeeId ?? user!.id,
+        company_id: companyId!,
       });
     }
     onClose();

@@ -14,6 +14,8 @@ interface AuthContextValue {
   session: Session | null;
   user: User | null;
   role: Role | null;
+  companyId: string | null;
+  isSuperAdmin: boolean;
   isLoading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
@@ -51,8 +53,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const user = session?.user ?? null;
   const role = (user?.app_metadata?.role as Role) ?? null;
+  const companyId = (user?.app_metadata?.company_id as string) ?? null;
+  const isSuperAdmin = role === 'super_admin';
 
-  const value: AuthContextValue = { session, user, role, isLoading, signIn, signOut };
+  const value: AuthContextValue = { session, user, role, companyId, isSuperAdmin, isLoading, signIn, signOut };
 
   return createElement(AuthContext.Provider, { value }, children);
 }

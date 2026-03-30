@@ -1,10 +1,10 @@
 import { useState, useMemo } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import {
   ArrowLeft, Phone, Mail, PlusCircle, Calendar,
-  Trash2, TrendingUp, Clock, ClipboardList, ChevronRight,
+  UserX, UserCheck, TrendingUp, Clock, ClipboardList, ChevronRight,
 } from 'lucide-react';
-import { useEmployee, useDeleteEmployee } from '../../hooks/useEmployees';
+import { useEmployee, useDeactivateEmployee } from '../../hooks/useEmployees';
 import { useWorkLogs } from '../../hooks/useWorkLogs';
 import { HoursChart } from '../../components/HoursChart';
 import { EmployeeTimeline } from '../../components/EmployeeTimeline';
@@ -17,10 +17,9 @@ type FilterMode = 'week' | 'month' | 'custom';
 
 export function AdminEmployeeDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
   const [showForm, setShowForm] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const deleteEmployee = useDeleteEmployee();
+  const [showDeactivateConfirm, setShowDeactivateConfirm] = useState(false);
+  const deactivateEmployee = useDeactivateEmployee();
 
   // ── Global filter (drives everything) ──────────────────────────────
   const [filterMode, setFilterMode] = useState<FilterMode>('month');
@@ -64,10 +63,10 @@ export function AdminEmployeeDetailPage() {
   const totalLogs    = logs.length;
   const isActiveToday = todayHours > 0;
 
-  const handleDelete = async () => {
-    if (!id) return;
-    await deleteEmployee.mutateAsync(id);
-    navigate('/admin/employees', { replace: true });
+  const handleToggleActive = async () => {
+    if (!id || !employee) return;
+    await deactivateEmployee.mutateAsync({ employeeId: id, active: !employee.is_active });
+    setShowDeactivateConfirm(false);
   };
 
   // ── Loading / not found ─────────────────────────────────────────────
@@ -131,6 +130,11 @@ export function AdminEmployeeDetailPage() {
                 }`}>
                   {employee.role === 'admin' ? 'Admin' : 'Zaposlenik'}
                 </span>
+                {!employee.is_active && (
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full tracking-wider uppercase bg-red-100 text-red-600">
+                    Neaktivan
+                  </span>
+                )}
               </div>
               <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5">
                 <a href={`mailto:${employee.email}`} className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-blue-600 transition-colors min-w-0">
@@ -154,22 +158,28 @@ export function AdminEmployeeDetailPage() {
                 <PlusCircle size={14} /> Dodaj unos
               </button>
 
-              {showDeleteConfirm ? (
-                <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
-                  <span className="text-xs text-red-600 font-medium whitespace-nowrap">Obrisati zaposlenika?</span>
-                  <button onClick={handleDelete} disabled={deleteEmployee.isPending}
-                    className="px-2.5 py-1 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-60 rounded-lg transition-colors">
-                    {deleteEmployee.isPending ? '...' : 'Da'}
+              {showDeactivateConfirm ? (
+                <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                  <span className="text-xs text-amber-700 font-medium whitespace-nowrap">
+                    {employee.is_active ? 'Deaktivirati zaposlenika?' : 'Aktivirati zaposlenika?'}
+                  </span>
+                  <button onClick={handleToggleActive} disabled={deactivateEmployee.isPending}
+                    className="px-2.5 py-1 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-60 rounded-lg transition-colors">
+                    {deactivateEmployee.isPending ? '...' : 'Da'}
                   </button>
-                  <button onClick={() => setShowDeleteConfirm(false)}
+                  <button onClick={() => setShowDeactivateConfirm(false)}
                     className="px-2.5 py-1 text-xs font-medium text-slate-500 hover:text-slate-700 transition-colors">
                     Ne
                   </button>
                 </div>
               ) : (
-                <button onClick={() => setShowDeleteConfirm(true)}
-                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-red-500 hover:text-red-700 hover:bg-red-50 border border-slate-200 hover:border-red-200 rounded-xl transition-all">
-                  <Trash2 size={13} /> Obriši
+                <button onClick={() => setShowDeactivateConfirm(true)}
+                  className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium border rounded-xl transition-all ${
+                    employee.is_active
+                      ? 'text-amber-600 hover:text-amber-700 hover:bg-amber-50 border-slate-200 hover:border-amber-200'
+                      : 'text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 border-slate-200 hover:border-emerald-200'
+                  }`}>
+                  {employee.is_active ? <><UserX size={13} /> Deaktiviraj</> : <><UserCheck size={13} /> Aktiviraj</>}
                 </button>
               )}
             </div>
@@ -184,29 +194,35 @@ export function AdminEmployeeDetailPage() {
               <PlusCircle size={14} /> Dodaj unos
             </button>
 
-            {showDeleteConfirm ? (
-              <div className="flex items-center gap-1.5 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
-                <span className="text-xs text-red-600 font-medium whitespace-nowrap">Obrisati?</span>
-                <button onClick={handleDelete} disabled={deleteEmployee.isPending}
-                  className="px-2.5 py-1 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-60 rounded-lg transition-colors">
-                  {deleteEmployee.isPending ? '...' : 'Da'}
+            {showDeactivateConfirm ? (
+              <div className="flex items-center gap-1.5 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                <span className="text-xs text-amber-700 font-medium whitespace-nowrap">
+                  {employee.is_active ? 'Deaktivirati?' : 'Aktivirati?'}
+                </span>
+                <button onClick={handleToggleActive} disabled={deactivateEmployee.isPending}
+                  className="px-2.5 py-1 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-60 rounded-lg transition-colors">
+                  {deactivateEmployee.isPending ? '...' : 'Da'}
                 </button>
-                <button onClick={() => setShowDeleteConfirm(false)}
+                <button onClick={() => setShowDeactivateConfirm(false)}
                   className="px-2.5 py-1 text-xs font-medium text-slate-500 hover:text-slate-700 transition-colors">
                   Ne
                 </button>
               </div>
             ) : (
-              <button onClick={() => setShowDeleteConfirm(true)}
-                className="flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium text-red-500 hover:text-red-700 hover:bg-red-50 border border-slate-200 hover:border-red-200 rounded-xl transition-all">
-                <Trash2 size={13} /> Obriši
+              <button onClick={() => setShowDeactivateConfirm(true)}
+                className={`flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium border rounded-xl transition-all ${
+                  employee.is_active
+                    ? 'text-amber-600 hover:bg-amber-50 border-slate-200 hover:border-amber-200'
+                    : 'text-emerald-600 hover:bg-emerald-50 border-slate-200 hover:border-emerald-200'
+                }`}>
+                {employee.is_active ? <><UserX size={13} /> Deaktiviraj</> : <><UserCheck size={13} /> Aktiviraj</>}
               </button>
             )}
           </div>
 
-          {deleteEmployee.error && (
+          {deactivateEmployee.error && (
             <p className="mt-4 text-xs text-red-600 bg-red-50 border border-red-100 px-3 py-2 rounded-lg">
-              {(deleteEmployee.error as Error).message}
+              {(deactivateEmployee.error as Error).message}
             </p>
           )}
         </div>

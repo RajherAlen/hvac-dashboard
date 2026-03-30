@@ -77,9 +77,6 @@ export function LoginPage() {
           </form>
         </div>
 
-        <p className="text-center text-xs text-slate-500 mt-6">
-          Kontaktirajte administratora za promjenu lozinke.
-        </p>
       </div>
     </div>
   );

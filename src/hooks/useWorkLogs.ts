@@ -30,11 +30,12 @@ export function useWorkLogs(filters: WorkLogFilters = {}) {
 export function useAddWorkLog() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: async (values: WorkLogFormValues & { employee_id: string }) => {
+    mutationFn: async (values: WorkLogFormValues & { employee_id: string; company_id: string }) => {
       const { data, error } = await supabase
         .from('work_logs')
         .insert({
           employee_id: values.employee_id,
+          company_id: values.company_id,
           log_date: values.log_date,
           task_description: values.task_description,
           location: values.location,

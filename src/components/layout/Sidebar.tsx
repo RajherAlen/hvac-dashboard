@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useEmployee } from '../../hooks/useEmployees';
+import { useCompany } from '../../hooks/useCompany';
 import { EditProfileModal } from '../EditProfileModal';
 import { cn } from '../../lib/utils';
 
@@ -30,8 +31,9 @@ const employeeLinks = [
 ];
 
 export function Sidebar({ onClose }: SidebarProps) {
-  const { role, user, signOut } = useAuth();
-  const { data: profile } = useEmployee(user?.id);
+  const { role, user, signOut, isSuperAdmin } = useAuth();
+  const { data: profile } = useEmployee(isSuperAdmin ? undefined : user?.id);
+  const { data: company } = useCompany();
   const [showProfile, setShowProfile] = useState(false);
   const links = role === 'admin' ? adminLinks : employeeLinks;
 
@@ -43,7 +45,7 @@ export function Sidebar({ onClose }: SidebarProps) {
           <Wind size={20} className="text-white" />
         </div>
         <div>
-          <p className="font-semibold text-white leading-tight">HVAC Admin</p>
+          <p className="font-semibold text-white leading-tight">{company?.name ?? 'HVAC'}</p>
           <p className="text-xs text-slate-400 capitalize">{role ?? 'loading...'}</p>
         </div>
       </div>

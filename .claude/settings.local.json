@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc:*)",
+      "mcp__claude_ai_Vercel__deploy_to_vercel",
+      "mcp__claude_ai_Vercel__list_deployments",
+      "mcp__claude_ai_Vercel__get_deployment_build_logs",
+      "Bash(find /c/Users/Alen/radni sati/hvac-dashboard -maxdepth 3 -name *.sql -o -name supabase.json -o -name .env*)",
+      "mcp__claude_ai_Supabase__apply_migration",
+      "mcp__claude_ai_Supabase__generate_typescript_types",
+      "mcp__claude_ai_Supabase__deploy_edge_function",
+      "Bash(npm run:*)",
+      "Bash(curl:*)",
+      "Bash(supabase functions list:*)",
+      "Bash(npx supabase:*)",
+      "Bash(SUPABASE_ACCESS_TOKEN=sbp_38e5d7b6ab45874baea5b528cbf3ff3bf62170bf npx supabase:*)",
+      "Bash(})",
+      "Bash(__NEW_LINE_a13e78515de0dd01__ echo \"=== register-company ===\")",
+      "Bash(__NEW_LINE_80fedc3684427a8e__ echo \"\")",
+      "Bash(# Get full source of register-company by reading the readable portion grep -oa ''import[^;]*;'' \"\"C:/Users/Alen/AppData/Local/Temp/register-company.ts\"\")",
+      "Bash(python3:*)",
+      "Bash(SERVICE_KEY=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR0ZGJvZG5tZmV4c2Z5cGtwc3plIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NDIwMDA5OCwiZXhwIjoyMDg5Nzc2MDk4fQ.fPKZrSB1Ob7r65DElVeOzyYi4b6zNfzNkwzBn52QNoA\")",
+      "Bash(__NEW_LINE_378caa4cea42c178__ curl -s -X POST \"https://dtdbodnmfexsfypkpsze.supabase.co/auth/v1/admin/users\" -H \"Authorization: Bearer $SERVICE_KEY\" -H \"apikey: $SERVICE_KEY\" -H \"content-type: application/json\" -d '{:*)",
+      "Bash(__NEW_LINE_9566328a27f75986__ curl -s -X POST \"https://dtdbodnmfexsfypkpsze.supabase.co/auth/v1/admin/users\" -H \"Authorization: Bearer $SERVICE_KEY\" -H \"apikey: $SERVICE_KEY\" -H \"content-type: application/json\" -d '{:*)",
+      "Bash(__NEW_LINE_77c8fade032d78d0__ curl -s -X POST \"https://dtdbodnmfexsfypkpsze.supabase.co/auth/v1/admin/users\" -H \"Authorization: Bearer $SERVICE_KEY\" -H \"apikey: $SERVICE_KEY\" -H \"content-type: application/json\" -d '{:*)"
+    ]
+  }
+}
