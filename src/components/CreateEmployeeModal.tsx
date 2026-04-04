@@ -1,13 +1,13 @@
-import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { X, CheckCircle } from 'lucide-react';
+import { X } from 'lucide-react';
 import { useCreateEmployee } from '../hooks/useEmployees';
 
 const schema = z.object({
   full_name: z.string().min(2, 'Ime i prezime moraju imati najmanje 2 znaka'),
   email: z.string().email('Unesite valjanu e-mail adresu'),
+  password: z.string().min(6, 'Lozinka mora imati najmanje 6 znakova'),
   role: z.enum(['employee', 'admin']),
 });
 
@@ -19,7 +19,6 @@ interface CreateEmployeeModalProps {
 
 export function CreateEmployeeModal({ onClose }: CreateEmployeeModalProps) {
   const createEmployee = useCreateEmployee();
-  const [sentTo, setSentTo] = useState<string | null>(null);
 
   const {
     register,
@@ -30,13 +29,14 @@ export function CreateEmployeeModal({ onClose }: CreateEmployeeModalProps) {
     defaultValues: {
       full_name: '',
       email: '',
+      password: '',
       role: 'employee',
     },
   });
 
   const onSubmit = async (values: FormValues) => {
     await createEmployee.mutateAsync(values);
-    setSentTo(values.email);
+    onClose();
   };
 
   return (
@@ -53,25 +53,7 @@ export function CreateEmployeeModal({ onClose }: CreateEmployeeModalProps) {
           </button>
         </div>
 
-        {sentTo ? (
-          /* Uspješno poslana pozivnica */
-          <div className="px-6 py-8 flex flex-col items-center text-center gap-3">
-            <CheckCircle size={40} className="text-green-500" />
-            <p className="text-sm font-medium text-slate-800">Pozivnica je poslana!</p>
-            <p className="text-sm text-slate-500">
-              Link za registraciju poslan je na{' '}
-              <span className="font-medium text-slate-700">{sentTo}</span>.
-            </p>
-            <button
-              onClick={onClose}
-              className="mt-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
-            >
-              Zatvori
-            </button>
-          </div>
-        ) : (
-          /* Forma */
-          <form onSubmit={handleSubmit(onSubmit)} className="px-6 py-5 space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="px-6 py-5 space-y-4">
 
             {/* Ime i prezime */}
             <div>
@@ -100,6 +82,20 @@ export function CreateEmployeeModal({ onClose }: CreateEmployeeModalProps) {
               />
               {errors.email && (
                 <p className="mt-1 text-xs text-red-500">{errors.email.message}</p>
+              )}
+            </div>
+
+            {/* Lozinka */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Lozinka</label>
+              <input
+                type="password"
+                {...register('password')}
+                placeholder="Minimalno 6 znakova"
+                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              {errors.password && (
+                <p className="mt-1 text-xs text-red-500">{errors.password.message}</p>
               )}
             </div>
 
@@ -139,11 +135,10 @@ export function CreateEmployeeModal({ onClose }: CreateEmployeeModalProps) {
                 disabled={isSubmitting}
                 className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60 rounded-lg transition-colors"
               >
-                {isSubmitting ? 'Slanje...' : 'Pošalji pozivnicu'}
+                {isSubmitting ? 'Kreiranje...' : 'Kreiraj zaposlenika'}
               </button>
             </div>
-          </form>
-        )}
+        </form>
       </div>
     </div>
   );
