@@ -12,8 +12,7 @@
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
     "@supabase/supabase-js": "^2.99.3",
-    "@tailwindcss/oxide-win32-x64-msvc": "^4.2.2",
-    "@tanstack/react-query": "^5.95.0",
+"@tanstack/react-query": "^5.95.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
