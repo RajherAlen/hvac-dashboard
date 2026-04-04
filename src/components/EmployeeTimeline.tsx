@@ -97,17 +97,17 @@ function DayGroup({
                 </div>
 
                 {canEdit && (
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="flex items-center gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                     <button
                       onClick={() => setEditLog(log)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 active:bg-blue-50 active:text-blue-600 transition-colors"
                       title="Uredi"
                     >
                       <Pencil size={14} />
                     </button>
                     <button
                       onClick={() => handleDelete(log.id)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 active:bg-red-50 active:text-red-600 transition-colors"
                       title="Obriši"
                     >
                       <Trash2 size={14} />

@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { createClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 
 export function useEmployees() {
@@ -24,9 +25,9 @@ export function useEmployee(id: string | undefined) {
         .from('profiles')
         .select('*')
         .eq('id', id!)
-        .single();
+        .maybeSingle();
       if (error) throw error;
-      return data;
+      return data ?? null;
     },
   });
 }
@@ -34,6 +35,7 @@ export function useEmployee(id: string | undefined) {
 export interface CreateEmployeePayload {
   full_name: string;
   email: string;
+  password: string;
   role: 'admin' | 'employee';
 }
 
@@ -41,8 +43,8 @@ export function useDeleteEmployee() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: async (employeeId: string) => {
-      const { data, error } = await supabase.functions.invoke('delete-employee', {
-        body: { employee_id: employeeId },
+      const { data, error } = await supabase.rpc('delete_employee', {
+        employee_id: employeeId,
       });
       if (error) throw new Error(error.message);
       if (data?.error) throw new Error(data.error);
@@ -58,14 +60,25 @@ export function useCreateEmployee() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: async (payload: CreateEmployeePayload) => {
-      const { data, error } = await supabase.functions.invoke('invite-employee', {
-        body: {
-          ...payload,
-          redirect_to: `${window.location.origin}/accept-invite`,
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const serviceRoleKey = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
+
+      if (!supabaseUrl || !serviceRoleKey) {
+        throw new Error('Service role key not configured');
+      }
+
+      const adminClient = createClient(supabaseUrl, serviceRoleKey);
+      const { data, error } = await adminClient.auth.admin.createUser({
+        email: payload.email,
+        password: payload.password,
+        email_confirm: true,
+        user_metadata: {
+          full_name: payload.full_name,
+          role: payload.role,
         },
       });
+
       if (error) throw new Error(error.message);
-      if (data?.error) throw new Error(data.error);
       return data;
     },
     onSuccess: () => {

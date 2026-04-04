@@ -75,8 +75,8 @@ export function WorkLogForm({ editLog, onClose, employeeId }: WorkLogFormProps) 
   const error = addLog.error || updateLog.error;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40">
+      <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full sm:max-w-md max-h-[92dvh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
           <h2 className="text-base font-semibold text-slate-800">

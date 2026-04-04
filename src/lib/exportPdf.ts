@@ -5,12 +5,17 @@ import type { WorkLog, Profile } from '../types';
 // ─── Shared helpers ────────────────────────────────────────────────────────
 
 function openPrintWindow(html: string) {
-  const win = window.open('', '_blank');
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, '_blank');
+  // Auto-print on desktop after content loads; mobile users print via browser menu
   if (win) {
-    win.document.write(html);
-    win.document.close();
-    setTimeout(() => win.print(), 400);
+    setTimeout(() => {
+      try { win.print(); } catch (_) { /* silent on mobile */ }
+    }, 800);
   }
+  // Revoke blob URL after enough time for the window to have loaded
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 const baseStyles = `
