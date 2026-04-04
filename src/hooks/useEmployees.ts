@@ -47,7 +47,8 @@ export function useDeleteEmployee() {
         employee_id: employeeId,
       });
       if (error) throw new Error(error.message);
-      if (data?.error) throw new Error(data.error);
+      const result = data as { error?: string } | null;
+      if (result?.error) throw new Error(result.error);
       return data;
     },
     onSuccess: () => {

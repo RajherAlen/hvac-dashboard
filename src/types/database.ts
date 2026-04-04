@@ -88,7 +88,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      delete_employee: {
+        Args: { employee_id: string }
+        Returns: Json
+      }
+      invite_employee: {
+        Args: { employee_email: string; employee_name: string; employee_role?: string }
+        Returns: Json
+      }
     }
     Enums: {
       [_ in never]: never
