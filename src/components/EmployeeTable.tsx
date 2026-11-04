@@ -2,18 +2,26 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronRight, Search, X, ArrowUp, ArrowDown, ArrowUpDown, AlertCircle } from 'lucide-react';
 import type { Profile, WorkLog } from '../types';
+import type { DirectoryEntry } from '../hooks/useStaffDirectory';
+import { STATUS_LABEL, type EmployeeStatus } from '../lib/employeeStatus';
 import { formatHours, todayISO, initials, cn } from '../lib/utils';
 import { formatRelative, formatDayLong, capitalize } from '../lib/format-date';
-import { workdaysBetween, isStaff } from '../lib/period';
+import { workdaysBetween } from '../lib/period';
 
 interface EmployeeTableProps {
-  employees: Profile[];
+  entries: DirectoryEntry[];
   /** Unosi tekućeg tjedna */
   logs: WorkLog[];
-  /** employee_id → datum zadnjeg unosa (bilo kada) */
-  lastLogDates: Record<string, string | null>;
   isLoading?: boolean;
 }
+
+type StatusFilter = 'current' | 'pozvan' | 'neaktivan' | 'all';
+const FILTERS: { key: StatusFilter; label: string; match: (s: EmployeeStatus) => boolean }[] = [
+  { key: 'current', label: 'Aktivni', match: s => s === 'aktivan' },
+  { key: 'pozvan', label: 'Pozvani', match: s => s === 'pozvan' },
+  { key: 'neaktivan', label: 'Neaktivni', match: s => s === 'neaktivan' },
+  { key: 'all', label: 'Svi', match: () => true },
+];
 
 type SortKey = 'name' | 'today' | 'week' | 'last';
 type SortDir = 'asc' | 'desc';
@@ -28,6 +36,7 @@ interface Row {
   lastDate: string | null;
   staleDays: number;
   isAdmin: boolean;
+  status: EmployeeStatus;
 }
 
 const COLUMNS: { key: SortKey; label: string; align: 'left' | 'right' }[] = [
@@ -37,32 +46,40 @@ const COLUMNS: { key: SortKey; label: string; align: 'left' | 'right' }[] = [
   { key: 'last', label: 'Zadnji unos', align: 'left' },
 ];
 
-export function EmployeeTable({ employees, logs, lastLogDates, isLoading }: EmployeeTableProps) {
+export function EmployeeTable({ entries, logs, isLoading }: EmployeeTableProps) {
   const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<StatusFilter>('current');
+  const [showAdmins, setShowAdmins] = useState(false);
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: 'name', dir: 'asc' });
   const today = todayISO();
 
-  const rows: Row[] = useMemo(() => employees.map(emp => {
+  const rows: Row[] = useMemo(() => entries.map(({ emp, isAdmin, status, lastLogDate }) => {
     const own = logs.filter(l => l.employee_id === emp.id);
-    const lastDate = lastLogDates[emp.id] ?? null;
-    const isAdmin = !isStaff(emp);
     return {
       emp,
       isAdmin,
+      status,
       todayHours: own.filter(l => l.log_date === today).reduce((s, l) => s + Number(l.hours_worked), 0),
       weekHours: own.reduce((s, l) => s + Number(l.hours_worked), 0),
-      lastDate,
-      staleDays: !isAdmin && lastDate ? workdaysBetween(lastDate, today) : 0,
+      lastDate: lastLogDate,
+      staleDays: !isAdmin && status === 'aktivan' && lastLogDate ? workdaysBetween(lastLogDate, today) : 0,
     };
-  }), [employees, logs, lastLogDates, today]);
+  }), [entries, logs, today]);
+
+  const staffRows = rows.filter(r => !r.isAdmin);
+  const adminCount = rows.length - staffRows.length;
+  const counts = Object.fromEntries(FILTERS.map(f => [f.key, staffRows.filter(r => f.match(r.status)).length])) as Record<StatusFilter, number>;
 
   const q = search.trim().toLocaleLowerCase('hr');
   const visible = useMemo(() => {
-    const filtered = q
-      ? rows.filter(r => r.emp.full_name.toLocaleLowerCase('hr').includes(q) || r.emp.email.toLowerCase().includes(q))
-      : rows;
+    const match = FILTERS.find(f => f.key === filter)!.match;
+    const filtered = rows
+      .filter(r => (r.isAdmin ? showAdmins : match(r.status)))
+      .filter(r => !q || r.emp.full_name.toLocaleLowerCase('hr').includes(q) || r.emp.email.toLowerCase().includes(q));
     const dir = sort.dir === 'asc' ? 1 : -1;
     return [...filtered].sort((a, b) => {
+      // Administratori uvijek na dnu
+      if (a.isAdmin !== b.isAdmin) return a.isAdmin ? 1 : -1;
       switch (sort.key) {
         case 'name': return dir * a.emp.full_name.localeCompare(b.emp.full_name, 'hr');
         case 'today': return dir * (a.todayHours - b.todayHours);
@@ -70,7 +87,7 @@ export function EmployeeTable({ employees, logs, lastLogDates, isLoading }: Empl
         case 'last': return dir * (a.lastDate ?? '').localeCompare(b.lastDate ?? '');
       }
     });
-  }, [rows, q, sort]);
+  }, [rows, q, sort, filter, showAdmins]);
 
   const toggleSort = (key: SortKey) =>
     setSort(s => s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: key === 'name' ? 'asc' : 'desc' });
@@ -126,6 +143,40 @@ export function EmployeeTable({ employees, logs, lastLogDates, isLoading }: Empl
         </label>
       </div>
 
+      {/* Filter statusa + administratori */}
+      <div className="px-4 py-2.5 border-b border-slate-100 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div role="group" aria-label="Filtriraj po statusu" className="flex flex-wrap gap-1">
+          {FILTERS.map(f => {
+            const active = filter === f.key;
+            return (
+              <button
+                key={f.key}
+                type="button"
+                aria-pressed={active}
+                onClick={() => setFilter(f.key)}
+                className={cn(
+                  'min-h-9 px-3 py-1 text-sm font-medium rounded-full border transition-colors',
+                  active ? 'bg-slate-900 text-white border-slate-900' : 'text-slate-700 border-slate-200 hover:bg-slate-50',
+                )}
+              >
+                {f.label} <span className={cn('tabular-nums', active ? 'text-slate-300' : 'text-slate-500')}>{counts[f.key]}</span>
+              </button>
+            );
+          })}
+        </div>
+        {adminCount > 0 && (
+          <label className="ml-auto inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={showAdmins}
+              onChange={e => setShowAdmins(e.target.checked)}
+              className="w-4 h-4 rounded border-slate-300 accent-blue-600"
+            />
+            Prikaži administratore ({adminCount})
+          </label>
+        )}
+      </div>
+
       <p className="sr-only" aria-live="polite">
         {q ? `${visible.length} rezultata za „${search.trim()}”` : ''}
       </p>
@@ -162,7 +213,12 @@ export function EmployeeTable({ employees, logs, lastLogDates, isLoading }: Empl
               </button>
             </>
           ) : (
-            <p className="text-sm text-slate-600">Još nema zaposlenika.</p>
+            <p className="text-sm text-slate-600">
+              {filter === 'current' && counts.pozvan > 0 ? 'Nema aktivnih zaposlenika – pogledajte karticu „Pozvani”.'
+                : filter === 'pozvan' ? 'Nema pozvanih zaposlenika koji se još nisu prijavili.'
+                : filter === 'neaktivan' ? 'Nema deaktiviranih zaposlenika.'
+                : 'Još nema zaposlenika.'}
+            </p>
           )}
         </div>
       ) : (
@@ -177,12 +233,13 @@ export function EmployeeTable({ employees, logs, lastLogDates, isLoading }: Empl
 function EmployeeRow({ row: r }: { row: Row }) {
   const active = r.todayHours > 0;
   const stale = r.staleDays > STALE_WORKDAYS;
-  const lastText = r.isAdmin ? 'ne evidentira' : r.lastDate ? formatRelative(r.lastDate) : 'nikad';
+  const inactive = r.status === 'neaktivan';
+  const lastText = r.isAdmin ? 'ne evidentira' : r.lastDate ? formatRelative(r.lastDate) : 'još nema unosa';
   const lastTitle = r.lastDate ? capitalize(formatDayLong(r.lastDate)) : undefined;
 
   const aria = [
     `Detalji: ${r.emp.full_name}`,
-    r.isAdmin ? 'administrator' : null,
+    r.isAdmin ? 'administrator' : STATUS_LABEL[r.status].toLowerCase(),
     !r.isAdmin ? `danas ${formatHours(r.todayHours)}` : null,
     !r.isAdmin ? `ovaj tjedan ${formatHours(r.weekHours)}` : null,
     !r.isAdmin ? `zadnji unos ${lastText}` : null,
@@ -194,7 +251,7 @@ function EmployeeRow({ row: r }: { row: Row }) {
       <Link
         to={`/admin/employees/${r.emp.id}`}
         aria-label={aria}
-        className="group grid grid-cols-[minmax(0,1fr)_auto] md:grid-cols-[minmax(0,2.2fr)_1fr_1fr_1.3fr_24px] gap-x-4 gap-y-1 items-center px-4 md:px-5 py-3 hover:bg-slate-50 transition-colors focus-visible:outline-offset-[-2px]"
+        className={cn(inactive && 'opacity-70', "group grid grid-cols-[minmax(0,1fr)_auto] md:grid-cols-[minmax(0,2.2fr)_1fr_1fr_1.3fr_24px] gap-x-4 gap-y-1 items-center px-4 md:px-5 py-3 hover:bg-slate-50 transition-colors focus-visible:outline-offset-[-2px]")}
       >
         {/* Ime, e-mail, uloga */}
         <div className="flex items-center gap-3 min-w-0">
@@ -208,6 +265,14 @@ function EmployeeRow({ row: r }: { row: Row }) {
               {r.isAdmin && (
                 <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 shrink-0">Admin</span>
               )}
+              {!r.isAdmin && r.status !== 'aktivan' && (
+                <span className={cn(
+                  'text-[11px] font-semibold px-1.5 py-0.5 rounded shrink-0',
+                  r.status === 'pozvan' ? 'bg-amber-100 text-amber-900' : 'bg-slate-200 text-slate-700',
+                )}>
+                  {STATUS_LABEL[r.status]}
+                </span>
+              )}
             </p>
             <p className="text-xs text-slate-600 truncate">{r.emp.email}</p>
           </div>
@@ -215,7 +280,7 @@ function EmployeeRow({ row: r }: { row: Row }) {
 
         {/* Mobitel: sažetak desno */}
         <div className="md:hidden text-right">
-          <p className="text-sm font-semibold text-slate-900 tabular-nums">{r.isAdmin ? '—' : formatHours(r.weekHours)}</p>
+          <p className="text-sm font-semibold text-slate-900 tabular-nums">{r.isAdmin || r.status === 'pozvan' ? '—' : formatHours(r.weekHours)}</p>
           <p className="text-[11px] text-slate-600">ovaj tjedan</p>
         </div>
         <p className={cn('md:hidden col-span-2 pl-12 text-xs flex items-center gap-1', stale ? 'text-amber-800' : 'text-slate-600')}>
@@ -228,11 +293,11 @@ function EmployeeRow({ row: r }: { row: Row }) {
         <div className="hidden md:flex items-center justify-end gap-2 tabular-nums">
           {active && <span className="w-2 h-2 rounded-full bg-green-500" aria-hidden="true" />}
           <span className={cn('text-sm', active ? 'font-semibold text-green-800' : 'text-slate-500')}>
-            {r.isAdmin ? '—' : formatHours(r.todayHours)}
+            {r.isAdmin || r.status === 'pozvan' ? '—' : formatHours(r.todayHours)}
           </span>
         </div>
         <div className="hidden md:block text-right text-sm font-semibold text-slate-900 tabular-nums">
-          {r.isAdmin ? <span className="font-normal text-slate-500">—</span> : formatHours(r.weekHours)}
+          {r.isAdmin || r.status === 'pozvan' ? <span className="font-normal text-slate-500">—</span> : formatHours(r.weekHours)}
         </div>
         <div className="hidden md:flex items-center gap-1.5 min-w-0" title={lastTitle}>
           {stale && <AlertCircle size={13} aria-hidden="true" className="text-amber-600 shrink-0" />}

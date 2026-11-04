@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { PlusCircle } from 'lucide-react';
-import { useEmployees } from '../../hooks/useEmployees';
-import { useWorkLogs, useLastLogDates } from '../../hooks/useWorkLogs';
+import { useWorkLogs } from '../../hooks/useWorkLogs';
+import { useStaffDirectory } from '../../hooks/useStaffDirectory';
 import { EmployeeTable } from '../../components/EmployeeTable';
 import { CreateEmployeeModal } from '../../components/CreateEmployeeModal';
 import { getCurrentWeekRange, pluralHr, todayISO } from '../../lib/utils';
@@ -14,11 +14,12 @@ export function AdminEmployeesPage() {
   const { start: weekStart, end: weekEnd } = getCurrentWeekRange();
   const today = todayISO();
 
-  const { data: employees = [], isLoading: empLoading } = useEmployees();
+  const directory = useStaffDirectory();
   const { data: weekLogs = [], isLoading: logsLoading } = useWorkLogs({ startDate: weekStart, endDate: weekEnd });
-  const { data: lastLogDates = {}, isLoading: lastLoading } = useLastLogDates(employees.map(e => e.id));
 
-  const staff = employees.filter(isStaff);
+  const staff = directory.entries.filter(e => !e.isAdmin);
+  const nActive = staff.filter(e => e.status === 'aktivan').length;
+  const nInvited = staff.filter(e => e.status === 'pozvan').length;
   const activeToday = new Set(weekLogs.filter(l => l.log_date === today && isStaff(l.profiles)).map(l => l.employee_id)).size;
 
   return (
@@ -26,11 +27,12 @@ export function AdminEmployeesPage() {
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="text-lg sm:text-xl font-bold text-slate-900">Zaposlenici</h1>
-          {!empLoading && (
+          {!directory.isLoading && (
             <p className="text-sm text-slate-600 mt-0.5">
-              {staff.length} {pluralHr(staff.length, 'zaposlenik', 'zaposlenika', 'zaposlenika')}
+              {nActive} {pluralHr(nActive, 'aktivan zaposlenik', 'aktivna zaposlenika', 'aktivnih zaposlenika')}
+              {nInvited > 0 && <> · {nInvited} {pluralHr(nInvited, 'pozvan', 'pozvana', 'pozvanih')}</>}
               {' · '}
-              {activeToday} {pluralHr(activeToday, 'aktivan', 'aktivna', 'aktivnih')} danas
+              {activeToday} danas {pluralHr(activeToday, 'upisao', 'upisala', 'upisalo')} rad
             </p>
           )}
         </div>
@@ -44,12 +46,7 @@ export function AdminEmployeesPage() {
         </button>
       </div>
 
-      <EmployeeTable
-        employees={employees}
-        logs={weekLogs}
-        lastLogDates={lastLogDates}
-        isLoading={empLoading || logsLoading || (employees.length > 0 && lastLoading)}
-      />
+      <EmployeeTable entries={directory.entries} logs={weekLogs} isLoading={directory.isLoading || logsLoading} />
 
       {showCreate && <CreateEmployeeModal onClose={() => setShowCreate(false)} />}
     </div>

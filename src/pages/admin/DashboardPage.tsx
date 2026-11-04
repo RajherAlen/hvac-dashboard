@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { DropdownMenu } from 'radix-ui';
 import {
   Clock, Users, ClipboardList, TrendingUp, Download, MapPin,
@@ -9,7 +9,12 @@ import { StatCard, type StatDelta } from '../../components/StatCard';
 import { HoursChart } from '../../components/HoursChart';
 import { ViewToggle, PeriodStepper } from '../../components/PeriodNav';
 import { useWorkLogs, useLatestWorkLog } from '../../hooks/useWorkLogs';
-import { useEmployees } from '../../hooks/useEmployees';
+import { useStaffDirectory } from '../../hooks/useStaffDirectory';
+import { BucketEntriesDialog } from '../../components/BucketEntriesDialog';
+import { LogLocation } from '../../components/clients/LogLocation';
+import { ServiceDueCard } from '../../components/clients/ServiceDueCard';
+import type { Bucket } from '../../lib/period';
+import type { Profile } from '../../types';
 import { usePeriod } from '../../hooks/usePeriod';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { todayISO, formatHours, initials, pluralHr } from '../../lib/utils';
@@ -59,12 +64,17 @@ export function AdminDashboardPage() {
   const { data: allPeriodLogs = [], isLoading } = useWorkLogs({ startDate, endDate });
   const { data: allPrevLogs = [], isLoading: prevLoading } = useWorkLogs({ startDate: prev.start, endDate: prev.end });
   const { data: allMonthLogs = [] } = useWorkLogs({ startDate: monthStart, endDate: monthEnd });
-  const { data: allEmployees = [], isLoading: employeesLoading } = useEmployees();
+  const directory = useStaffDirectory();
+  const employeesLoading = directory.isLoading;
+  const [openBucket, setOpenBucket] = useState<Bucket | null>(null);
   const { data: allTodayLogs = [], isLoading: todayLoading } = useWorkLogs({ startDate: today, endDate: today });
   const { data: latestLog } = useLatestWorkLog();
 
   // Admini ne evidentiraju rad → isključeni iz KPI-ja, grafova, legendi i izvoza.
-  const employees  = useMemo(() => allEmployees.filter(isStaff), [allEmployees]);
+  // Grafovi/izvoz: svi zaposlenici (i deaktivirani – njihovi stari sati ostaju u povijesti).
+  const employees  = useMemo(() => directory.entries.filter(e => !e.isAdmin).map(e => e.emp), [directory.entries]);
+  // "Aktivni danas" i popis tko nije upisao: samo aktivni (bez pozvanih i deaktiviranih).
+  const activeStaff = directory.activeStaff;
   const periodLogs = useMemo(() => allPeriodLogs.filter(l => isStaff(l.profiles)), [allPeriodLogs]);
   const prevLogs   = useMemo(() => allPrevLogs.filter(l => isStaff(l.profiles)), [allPrevLogs]);
   const monthLogs  = useMemo(() => allMonthLogs.filter(l => isStaff(l.profiles)), [allMonthLogs]);
@@ -72,11 +82,15 @@ export function AdminDashboardPage() {
 
   // ── KPI ───────────────────────────────────────────────────────────────
   const totalHours      = sumHours(periodLogs);
-  const activeToday     = new Set(todayLogs.map(l => l.employee_id)).size;
+  const loggedTodayIds  = new Set(todayLogs.map(l => l.employee_id));
+  const activeToday     = activeStaff.filter(e => loggedTodayIds.has(e.id)).length;
+  const missingToday    = activeStaff.filter(e => !loggedTodayIds.has(e.id));
   // Danas se broji kao radni dan tek kad postoji unos – inače bi jutro uvijek rušilo prosjek.
   const workdaysElapsed = elapsedWorkdays(periodDays, todayLogs.length > 0 ? today : toISODate(addDays(parseISO(today), -1)));
-  // Prosjek = sati / broj proteklih radnih dana (pon–pet, do danas uključivo).
-  const avgPerDay       = workdaysElapsed > 0 ? totalHours / workdaysElapsed : 0;
+  // Tim: sati / protekli radni dani. Po zaposleniku: još / broj zaposlenika koji su u periodu radili.
+  const teamPerDay      = workdaysElapsed > 0 ? totalHours / workdaysElapsed : 0;
+  const contributors    = new Set(periodLogs.map(l => l.employee_id)).size;
+  const avgPerDay       = contributors > 0 ? teamPerDay / contributors : 0;
 
   const prevHours    = sumHours(prevLogs);
   const prevDays     = useMemo(() => {
@@ -85,20 +99,27 @@ export function AdminDashboardPage() {
     return out;
   }, [prev.start, prev.end]);
   const prevWorkdays = elapsedWorkdays(prevDays, prev.end);
-  const prevAvg      = prevWorkdays > 0 ? prevHours / prevWorkdays : 0;
+  const prevContrib  = new Set(prevLogs.map(l => l.employee_id)).size;
+  const prevAvg      = prevWorkdays > 0 && prevContrib > 0 ? prevHours / prevWorkdays / prevContrib : 0;
 
   // Trenutne vrijednosti za usporedbu (bez današnjeg dana ako je period u tijeku)
   const cmpLogs     = prev.inProgress ? periodLogs.filter(l => l.log_date <= prev.currentEnd) : periodLogs;
   const cmpHours    = sumHours(cmpLogs);
   const cmpWorkdays = elapsedWorkdays(periodDays, prev.currentEnd);
-  const cmpAvg      = cmpWorkdays > 0 ? cmpHours / cmpWorkdays : 0;
+  const cmpContrib  = new Set(cmpLogs.map(l => l.employee_id)).size;
+  const cmpAvg      = cmpWorkdays > 0 && cmpContrib > 0 ? cmpHours / cmpWorkdays / cmpContrib : 0;
 
   const delta = (cur: number, before: number): StatDelta | null =>
     !prev.enabled || prevLoading || before <= 0 ? null : { ratio: (cur - before) / before, label: prev.label };
 
   const now = new Date();
-  const nobodyYet = !todayLoading && activeToday === 0 && employees.length > 0
-    && !isWeekend(now) && now.getHours() >= NOBODY_ACTIVE_ALERT_HOUR;
+  const isWorkdayNow = !isWeekend(now);
+  const nobodyYet = !todayLoading && activeToday === 0 && activeStaff.length > 0
+    && isWorkdayNow && now.getHours() >= NOBODY_ACTIVE_ALERT_HOUR;
+
+  // Linkovi na profil zaposlenika zadržavaju odabrani period
+  const periodQuery = view === 'month' ? `view=month&date=${startDate.slice(0, 7)}` : `view=week&date=${startDate}`;
+  const employeeHref = (id: string) => `/admin/employees/${id}?${periodQuery}`;
 
   const daysNote = `${workdaysElapsed} ${pluralHr(workdaysElapsed, 'radni dan', 'radna dana', 'radnih dana')}`;
 
@@ -135,11 +156,12 @@ export function AdminDashboardPage() {
         />
         <StatCard
           title="Aktivni danas"
-          value={`${activeToday} / ${employees.length}`}
+          value={`${activeToday} / ${activeStaff.length}`}
           subtitle={nobodyYet ? `Nitko nije upisao rad do ${NOBODY_ACTIVE_ALERT_HOUR} h` : 'zaposlenika evidentiralo danas'}
           tone={nobodyYet ? 'danger' : 'default'}
           icon={Users}
           isLoading={employeesLoading || todayLoading}
+          footer={isWorkdayNow && missingToday.length > 0 ? <MissingToday missing={missingToday} /> : null}
         />
         <StatCard
           title="Unosi u periodu"
@@ -149,9 +171,9 @@ export function AdminDashboardPage() {
           isLoading={isLoading}
         />
         <StatCard
-          title="Prosj. sati / radni dan"
+          title="Prosjek po zaposleniku / dan"
           value={formatHours(avgPerDay)}
-          subtitle={`cijeli tim · ${daysNote}${endDate < today ? '' : ' do danas'}`}
+          subtitle={`tim: ${formatHours(teamPerDay)} / dan · ${daysNote}${endDate < today ? '' : ' do danas'}`}
           icon={TrendingUp}
           delta={delta(cmpAvg, prevAvg)}
           isLoading={isLoading}
@@ -167,6 +189,7 @@ export function AdminDashboardPage() {
           groupBy={view === 'week' ? 'day' : 'week'}
           mode="simple"
           title={view === 'week' ? 'Ukupni sati po danu' : 'Ukupni sati po tjednu'}
+          onBucketClick={setOpenBucket}
         />
         <HoursChart
           logs={periodLogs}
@@ -176,8 +199,17 @@ export function AdminDashboardPage() {
           groupBy={view === 'week' ? 'day' : 'week'}
           mode="stacked"
           title={view === 'week' ? 'Sati po zaposleniku – po danu' : 'Sati po zaposleniku – po tjednu'}
+          onBucketClick={setOpenBucket}
+          employeeHref={employeeHref}
         />
       </div>
+
+      {openBucket && (
+        <BucketEntriesDialog bucket={openBucket} logs={periodLogs} onClose={() => setOpenBucket(null)} employeeHref={employeeHref} />
+      )}
+
+      {/* Servisni rokovi (prikazuje se samo ako ih ima) */}
+      <ServiceDueCard />
 
       {/* Današnja aktivnost */}
       <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden" aria-labelledby="today-title">
@@ -224,7 +256,7 @@ export function AdminDashboardPage() {
                     <span className="flex items-center gap-1 text-xs text-slate-600 mt-0.5">
                       <MapPin size={11} aria-hidden="true" />
                       <span className="sr-only">Lokacija:</span>
-                      <span className="truncate">{log.location}</span>
+                      <LogLocation log={log} className="truncate" />
                     </span>
                   </div>
                 </li>
@@ -321,5 +353,21 @@ function ExportMenu({
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>
+  );
+}
+
+// ─── Tko danas još nije upisao rad ──────────────────────────────────────────
+
+function MissingToday({ missing }: { missing: Profile[] }) {
+  const shown = missing.slice(0, 3).map(e => e.full_name.split(' ')[0]);
+  const rest = missing.length - shown.length;
+
+  return (
+    <div className="mt-2.5 pt-2.5 border-t border-slate-100">
+      <p className="text-xs text-slate-700" title={missing.map(e => e.full_name).join(', ')}>
+        <span className="text-slate-600">Nisu upisali: </span>
+        {shown.join(', ')}{rest > 0 && ` i još ${rest}`}
+      </p>
+    </div>
   );
 }

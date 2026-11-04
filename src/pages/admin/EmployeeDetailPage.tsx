@@ -1,10 +1,16 @@
 import { useState } from 'react';
+import { DropdownMenu } from 'radix-ui';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   Phone, Mail, PlusCircle, Trash2, Clock, ClipboardList, Download, ChevronRight, TrendingUp,
+  MoreHorizontal, UserX, UserCheck, Info, History,
 } from 'lucide-react';
-import { useEmployee, useDeleteEmployee } from '../../hooks/useEmployees';
+import { EmployeeChangesDialog } from '../../components/WorkLogHistory';
+import { useEmployee, useDeleteEmployee, useSetEmployeeActive } from '../../hooks/useEmployees';
+import { BucketEntriesDialog } from '../../components/BucketEntriesDialog';
+import type { Bucket } from '../../lib/period';
+import { formatDay } from '../../lib/format-date';
 import { useWorkLogs, useWorkLogCount } from '../../hooks/useWorkLogs';
 import { usePeriod } from '../../hooks/usePeriod';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
@@ -27,7 +33,11 @@ export function AdminEmployeeDetailPage() {
   const navigate = useNavigate();
   const [showForm, setShowForm] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
+  const [showDeactivate, setShowDeactivate] = useState(false);
+  const [showChanges, setShowChanges] = useState(false);
+  const [openBucket, setOpenBucket] = useState<Bucket | null>(null);
   const deleteEmployee = useDeleteEmployee();
+  const setActive = useSetEmployeeActive();
   const today = todayISO();
 
   // Period u URL-u (?view=month&date=2026-11) – pokreće sve na stranici
@@ -52,6 +62,14 @@ export function AdminEmployeeDetailPage() {
     await deleteEmployee.mutateAsync(id);
     toast.success(`Zaposlenik ${employee.full_name} obrisan`);
     navigate('/admin/employees', { replace: true });
+  };
+
+  const handleSetActive = async (active: boolean) => {
+    if (!id || !employee) return;
+    await setActive.mutateAsync({ employeeId: id, active });
+    toast.success(active ? `${employee.full_name} ponovno je aktivan` : `${employee.full_name} je deaktiviran`, {
+      description: active ? 'Može se ponovno prijaviti i upisivati rad.' : 'Prijava je onemogućena, povijest sati je sačuvana.',
+    });
   };
 
   const handleExport = () => {
@@ -84,6 +102,7 @@ export function AdminEmployeeDetailPage() {
   }
 
   const isAdmin = !isStaff(employee);
+  const isInactive = !!employee.deactivated_at;
   const periodNoun = period.view === 'week' ? 'tjedan' : period.view === 'month' ? 'mjesec' : 'period';
 
   const actions = (
@@ -104,14 +123,52 @@ export function AdminEmployeeDetailPage() {
       >
         <Download size={15} aria-hidden="true" /> <span className="hidden sm:inline">PDF</span>
       </button>
-      <button
-        type="button"
-        onClick={() => { deleteEmployee.reset(); setShowDelete(true); }}
-        className="inline-flex items-center justify-center gap-1.5 min-h-11 sm:min-h-0 px-3 py-2 text-sm font-medium text-red-700 bg-white border border-slate-300 hover:bg-red-50 hover:border-red-200 rounded-lg transition-colors"
-        aria-label={`Obriši zaposlenika ${employee.full_name}`}
-      >
-        <Trash2 size={15} aria-hidden="true" /> <span className="hidden sm:inline">Obriši</span>
-      </button>
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger
+          className="inline-flex items-center justify-center min-h-11 min-w-11 sm:min-h-0 sm:min-w-0 px-2.5 py-2 text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg data-[state=open]:bg-slate-100"
+          aria-label="Više radnji"
+        >
+          <MoreHorizontal size={16} aria-hidden="true" />
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Portal>
+          <DropdownMenu.Content align="end" sideOffset={6} collisionPadding={12}
+            className="z-50 min-w-60 bg-white border border-slate-200 rounded-xl shadow-xl p-1.5">
+            <DropdownMenu.Item
+              onSelect={() => setShowChanges(true)}
+              className="flex items-start gap-3 px-3 py-2.5 min-h-11 rounded-lg text-sm text-slate-800 outline-none cursor-pointer data-[highlighted]:bg-slate-100"
+            >
+              <History size={16} className="text-slate-500 mt-0.5 shrink-0" aria-hidden="true" />
+              <span><span className="block font-medium">Povijest izmjena</span><span className="block text-xs text-slate-600">Tko je i kada mijenjao ili brisao unose</span></span>
+            </DropdownMenu.Item>
+            <DropdownMenu.Separator className="my-1 h-px bg-slate-100" />
+            {isInactive ? (
+              <DropdownMenu.Item
+                onSelect={() => { void handleSetActive(true).catch(e => toast.error(errorMessage(e))); }}
+                className="flex items-start gap-3 px-3 py-2.5 min-h-11 rounded-lg text-sm text-slate-800 outline-none cursor-pointer data-[highlighted]:bg-slate-100"
+              >
+                <UserCheck size={16} className="text-slate-500 mt-0.5 shrink-0" aria-hidden="true" />
+                <span><span className="block font-medium">Ponovno aktiviraj</span><span className="block text-xs text-slate-600">Vraća mogućnost prijave</span></span>
+              </DropdownMenu.Item>
+            ) : (
+              <DropdownMenu.Item
+                onSelect={() => { setActive.reset(); setShowDeactivate(true); }}
+                className="flex items-start gap-3 px-3 py-2.5 min-h-11 rounded-lg text-sm text-slate-800 outline-none cursor-pointer data-[highlighted]:bg-slate-100"
+              >
+                <UserX size={16} className="text-slate-500 mt-0.5 shrink-0" aria-hidden="true" />
+                <span><span className="block font-medium">Deaktiviraj</span><span className="block text-xs text-slate-600">Onemogućuje prijavu, čuva povijest sati</span></span>
+              </DropdownMenu.Item>
+            )}
+            <DropdownMenu.Separator className="my-1 h-px bg-slate-100" />
+            <DropdownMenu.Item
+              onSelect={() => { deleteEmployee.reset(); setShowDelete(true); }}
+              className="flex items-start gap-3 px-3 py-2.5 min-h-11 rounded-lg text-sm text-red-700 outline-none cursor-pointer data-[highlighted]:bg-red-50"
+            >
+              <Trash2 size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
+              <span><span className="block font-medium">Trajno obriši…</span><span className="block text-xs text-red-700/80">Briše račun i sve unose</span></span>
+            </DropdownMenu.Item>
+          </DropdownMenu.Content>
+        </DropdownMenu.Portal>
+      </DropdownMenu.Root>
     </>
   );
 
@@ -144,6 +201,7 @@ export function AdminEmployeeDetailPage() {
               <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${isAdmin ? 'bg-purple-100 text-purple-800' : 'bg-slate-100 text-slate-700'}`}>
                 {isAdmin ? 'Administrator' : 'Zaposlenik'}
               </span>
+              {isInactive && <span className="text-xs font-semibold text-slate-700 bg-slate-200 px-2 py-0.5 rounded-full">Neaktivan</span>}
               {isActiveToday && <span className="text-xs font-medium text-green-800 bg-green-50 px-2 py-0.5 rounded-full">Aktivan danas</span>}
             </div>
             <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1.5">
@@ -163,6 +221,15 @@ export function AdminEmployeeDetailPage() {
         </div>
         <div className="sm:hidden flex gap-2 mt-4 pt-4 border-t border-slate-100">{actions}</div>
       </div>
+
+      {isInactive && (
+        <div role="status" className="flex items-start gap-2.5 px-4 py-3 bg-slate-100 border border-slate-200 rounded-xl text-sm text-slate-700">
+          <Info size={16} className="mt-0.5 shrink-0 text-slate-500" aria-hidden="true" />
+          <p>
+            Deaktiviran {formatDay(employee.deactivated_at!)} – ne može se prijaviti. Povijest sati je sačuvana i ulazi u izvješća.
+          </p>
+        </div>
+      )}
 
       {/* ── Period ──────────────────────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm px-4 py-3 sm:px-5 flex flex-wrap items-center gap-2 sm:gap-3">
@@ -211,6 +278,7 @@ export function AdminEmployeeDetailPage() {
           isLoading={logsLoading}
           mode="simple"
           title={`${chartGroupBy === 'day' ? 'Sati po danu' : 'Sati po tjednu'} · ${period.label}`}
+          onBucketClick={setOpenBucket}
         />
 
         <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden" aria-labelledby="history-title">
@@ -236,6 +304,22 @@ export function AdminEmployeeDetailPage() {
       </div>
 
       {showForm && <WorkLogForm onClose={() => setShowForm(false)} employeeId={id} />}
+      {openBucket && <BucketEntriesDialog bucket={openBucket} logs={logs} onClose={() => setOpenBucket(null)} />}
+      {showChanges && id && (
+        <EmployeeChangesDialog employeeId={id} employeeName={employee.full_name} onClose={() => setShowChanges(false)} />
+      )}
+
+      <ConfirmDialog
+        open={showDeactivate}
+        onOpenChange={setShowDeactivate}
+        tone="neutral"
+        title={`Deaktivirati zaposlenika ${employee.full_name}?`}
+        description="Zaposlenik se više neće moći prijaviti i neće se brojati u „Aktivni danas”. Svi dosadašnji unosi ostaju sačuvani i vidljivi u izvješćima. Deaktivaciju možete poništiti u bilo kojem trenutku."
+        confirmLabel="Deaktiviraj"
+        pendingLabel="Deaktiviranje…"
+        onConfirm={() => handleSetActive(false)}
+        error={setActive.error ? errorMessage(setActive.error) : null}
+      />
 
       <ConfirmDialog
         open={showDelete}
@@ -247,7 +331,7 @@ export function AdminEmployeeDetailPage() {
             <strong className="font-semibold text-slate-800">
               {totalLogCount ?? '…'} {pluralHr(totalLogCount ?? 0, 'radni unos', 'radna unosa', 'radnih unosa')}
             </strong>
-            . Ova se radnja ne može poništiti – ako želite sačuvati evidenciju, najprije izvezite PDF.
+            . Ova se radnja ne može poništiti. Ako želite sačuvati evidenciju sati, umjesto brisanja odaberite „Deaktiviraj”.
           </>
         }
         confirmText={employee.full_name}

@@ -1,3 +1,5 @@
+export type DeviceKind = 'split' | 'multisplit' | 'vrf' | 'toplinska_pumpa' | 'kotao' | 'ventilacija' | 'ostalo'
+
 export type Json =
   | string
   | number
@@ -15,6 +17,8 @@ export type Database = {
       profiles: {
         Row: {
           created_at: string | null
+          /** Postoji tek nakon migracije 20261104_employee_status.sql */
+          deactivated_at?: string | null
           email: string
           full_name: string
           id: string
@@ -39,8 +43,187 @@ export type Database = {
         }
         Relationships: []
       }
+      clients: {
+        Row: {
+          id: string
+          name: string
+          kind: 'private' | 'company'
+          oib: string | null
+          phone: string | null
+          email: string | null
+          notes: string | null
+          needs_review: boolean
+          created_by: string | null
+          created_at: string
+          archived_at: string | null
+        }
+        Insert: {
+          id?: string
+          name: string
+          kind?: 'private' | 'company'
+          oib?: string | null
+          phone?: string | null
+          email?: string | null
+          notes?: string | null
+          needs_review?: boolean
+          created_by?: string | null
+          created_at?: string
+          archived_at?: string | null
+        }
+        Update: {
+          id?: string
+          name?: string
+          kind?: 'private' | 'company'
+          oib?: string | null
+          phone?: string | null
+          email?: string | null
+          notes?: string | null
+          needs_review?: boolean
+          created_by?: string | null
+          created_at?: string
+          archived_at?: string | null
+        }
+        Relationships: []
+      }
+      sites: {
+        Row: {
+          id: string
+          client_id: string
+          label: string | null
+          address: string
+          city: string | null
+          postal_code: string | null
+          access_notes: string | null
+          needs_review: boolean
+          created_by: string | null
+          created_at: string
+          archived_at: string | null
+        }
+        Insert: {
+          id?: string
+          client_id: string
+          label?: string | null
+          address: string
+          city?: string | null
+          postal_code?: string | null
+          access_notes?: string | null
+          needs_review?: boolean
+          created_by?: string | null
+          created_at?: string
+          archived_at?: string | null
+        }
+        Update: {
+          id?: string
+          client_id?: string
+          label?: string | null
+          address?: string
+          city?: string | null
+          postal_code?: string | null
+          access_notes?: string | null
+          needs_review?: boolean
+          created_by?: string | null
+          created_at?: string
+          archived_at?: string | null
+        }
+        Relationships: []
+      }
+      devices: {
+        Row: {
+          id: string
+          site_id: string
+          kind: DeviceKind
+          brand: string | null
+          model: string | null
+          serial_number: string | null
+          install_date: string | null
+          warranty_until: string | null
+          refrigerant: string | null
+          capacity_kw: number | null
+          placement: string | null
+          service_interval_months: number
+          notes: string | null
+          needs_review: boolean
+          created_by: string | null
+          created_at: string
+          archived_at: string | null
+        }
+        Insert: {
+          id?: string
+          site_id: string
+          kind?: DeviceKind
+          brand?: string | null
+          model?: string | null
+          serial_number?: string | null
+          install_date?: string | null
+          warranty_until?: string | null
+          refrigerant?: string | null
+          capacity_kw?: number | null
+          placement?: string | null
+          service_interval_months?: number
+          notes?: string | null
+          needs_review?: boolean
+          created_by?: string | null
+          created_at?: string
+          archived_at?: string | null
+        }
+        Update: {
+          id?: string
+          site_id?: string
+          kind?: DeviceKind
+          brand?: string | null
+          model?: string | null
+          serial_number?: string | null
+          install_date?: string | null
+          warranty_until?: string | null
+          refrigerant?: string | null
+          capacity_kw?: number | null
+          placement?: string | null
+          service_interval_months?: number
+          notes?: string | null
+          needs_review?: boolean
+          created_by?: string | null
+          created_at?: string
+          archived_at?: string | null
+        }
+        Relationships: []
+      }
+      work_log_changes: {
+        Row: {
+          id: number
+          work_log_id: string
+          employee_id: string | null
+          action: 'insert' | 'update' | 'delete'
+          changed_by: string | null
+          changed_at: string
+          reason: string | null
+          tx: number
+          changes: Json
+        }
+        Insert: Record<string, never>
+        Update: Record<string, never>
+        Relationships: []
+      }
+      work_log_devices: {
+        Row: {
+          work_log_id: string
+          device_id: string
+        }
+        Insert: {
+          work_log_id: string
+          device_id: string
+        }
+        Update: {
+          work_log_id?: string
+          device_id?: string
+        }
+        Relationships: []
+      }
       work_logs: {
         Row: {
+          /** Postoji tek nakon migracije 20261106_work_log_audit.sql */
+          created_by?: string | null
+          edited_at?: string | null
+          edited_by?: string | null
           created_at: string | null
           employee_id: string
           hours_worked: number
@@ -48,10 +231,16 @@ export type Database = {
           location: string
           log_date: string
           notes: string | null
+          /** Postoji tek nakon migracije 20261105_clients.sql */
+          site_id?: string | null
           task_description: string
           updated_at: string | null
         }
         Insert: {
+          /** Postoji tek nakon migracije 20261106_work_log_audit.sql */
+          created_by?: string | null
+          edited_at?: string | null
+          edited_by?: string | null
           created_at?: string | null
           employee_id: string
           hours_worked: number
@@ -59,10 +248,16 @@ export type Database = {
           location: string
           log_date: string
           notes?: string | null
+          /** Postoji tek nakon migracije 20261105_clients.sql */
+          site_id?: string | null
           task_description: string
           updated_at?: string | null
         }
         Update: {
+          /** Postoji tek nakon migracije 20261106_work_log_audit.sql */
+          created_by?: string | null
+          edited_at?: string | null
+          edited_by?: string | null
           created_at?: string | null
           employee_id?: string
           hours_worked?: number
@@ -70,6 +265,8 @@ export type Database = {
           location?: string
           log_date?: string
           notes?: string | null
+          /** Postoji tek nakon migracije 20261105_clients.sql */
+          site_id?: string | null
           task_description?: string
           updated_at?: string | null
         }
@@ -85,9 +282,29 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      device_service_status: {
+        Row: { device_id: string; last_service_date: string | null; next_service_due: string | null }
+        Relationships: []
+      }
     }
     Functions: {
+      update_work_log: { Args: { p_id: string; p_values: Json; p_device_ids?: string[] | null }; Returns: Database['public']['Tables']['work_logs']['Row'] }
+      add_work_logs: { Args: { items: Json }; Returns: string[] }
+      create_site_quick: {
+        Args: { p_client_id: string | null; p_client_name: string | null; p_client_kind: string | null; p_address: string; p_city: string | null; p_label: string | null }
+        Returns: Json
+      }
+      merge_sites: { Args: { from_id: string; into_id: string }; Returns: Json }
+      merge_clients: { Args: { from_id: string; into_id: string }; Returns: Json }
+      link_legacy_location: { Args: { p_location: string; p_site_id: string }; Returns: Json }
+      employee_auth_status: {
+        Args: Record<string, never>
+        Returns: { id: string; last_sign_in_at: string | null; invited_at: string | null }[]
+      }
+      set_employee_active: {
+        Args: { employee_id: string; active: boolean }
+        Returns: Json
+      }
       delete_employee: {
         Args: { employee_id: string }
         Returns: Json

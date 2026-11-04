@@ -21,6 +21,9 @@ import { AdminEmployeeDetailPage } from './pages/admin/EmployeeDetailPage';
 import { MyDashboardPage } from './pages/employee/MyDashboardPage';
 import { LogWorkPage } from './pages/employee/LogWorkPage';
 import { MyHistoryPage } from './pages/employee/MyHistoryPage';
+import { ClientsPage } from './pages/clients/ClientsPage';
+import { ClientDetailPage } from './pages/clients/ClientDetailPage';
+import { LinkLegacyPage } from './pages/clients/LinkLegacyPage';
 
 function Spinner() {
   return (
@@ -83,6 +86,13 @@ function AppRoutes() {
         <Route path="/my/dashboard" element={<MyDashboardPage />} />
         <Route path="/my/log" element={<LogWorkPage />} />
         <Route path="/my/history" element={<MyHistoryPage />} />
+        {/* Klijenti – zajednički; tehničar vidi i dodaje, admin uređuje */}
+        <Route path="/klijenti" element={<ClientsPage />} />
+        <Route path="/klijenti/:id" element={<ClientDetailPage />} />
+      </Route>
+
+      <Route element={<RequireAuth requiredRole="admin"><AppShell /></RequireAuth>}>
+        <Route path="/klijenti/povezivanje" element={<LinkLegacyPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

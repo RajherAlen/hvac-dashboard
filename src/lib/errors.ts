@@ -3,6 +3,8 @@
  */
 const KNOWN: Array<[RegExp, string]> = [
   [/invalid login credentials/i, 'Neispravan e-mail ili lozinka.'],
+  [/relation .*(clients|sites|devices).* does not exist|could not find the (table|function) .*(clients|sites|devices|add_work_logs|create_site_quick|merge_|link_legacy)/i, 'Modul klijenata još nije aktiviran – administrator treba pokrenuti migraciju baze (clients).'],
+  [/user is banned|banned/i, 'Vaš račun je deaktiviran. Obratite se administratoru.'],
   [/email not confirmed/i, 'E-mail adresa još nije potvrđena.'],
   [/user already registered|already been registered|already exists|duplicate key/i, 'Korisnik s tom e-mail adresom već postoji.'],
   [/password should be at least (\d+)/i, 'Lozinka je prekratka.'],

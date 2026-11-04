@@ -16,12 +16,14 @@ interface ConfirmDialogProps {
   /** Ako je zadano, korisnik mora upisati ovaj tekst (npr. ime zaposlenika) za potvrdu. */
   confirmText?: string;
   error?: string | null;
+  /** 'danger' (zadano) za brisanje, 'neutral' za reverzibilne radnje poput deaktivacije */
+  tone?: 'danger' | 'neutral';
 }
 
 /** Potvrda destruktivne radnje (role="alertdialog"). Fokus po zadanom na "Odustani". */
 export function ConfirmDialog({
   open, onOpenChange, title, description, confirmLabel, pendingLabel = 'Brisanje…',
-  onConfirm, confirmText, error,
+  onConfirm, confirmText, error, tone = 'danger',
 }: ConfirmDialogProps) {
   const [typed, setTyped] = useState('');
   const [pending, setPending] = useState(false);
@@ -55,8 +57,8 @@ export function ConfirmDialog({
           )}
         >
           <div className="flex gap-3">
-            <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0" aria-hidden="true">
-              <AlertTriangle size={18} className="text-red-600" />
+            <div className={cn('w-10 h-10 rounded-full flex items-center justify-center shrink-0', tone === 'danger' ? 'bg-red-100' : 'bg-slate-100')} aria-hidden="true">
+              <AlertTriangle size={18} className={tone === 'danger' ? 'text-red-600' : 'text-slate-600'} />
             </div>
             <div className="min-w-0 flex-1">
               <A.Title className="text-base font-semibold text-slate-900">{title}</A.Title>
@@ -91,7 +93,7 @@ export function ConfirmDialog({
             <A.Action
               onClick={handleConfirm}
               disabled={!matches || pending}
-              className="min-h-11 sm:min-h-0 inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg"
+              className={cn('min-h-11 sm:min-h-0 inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed rounded-lg', tone === 'danger' ? 'bg-red-600 hover:bg-red-700' : 'bg-slate-900 hover:bg-slate-800')}
             >
               {pending && <Spinner />}
               {pending ? pendingLabel : confirmLabel}
