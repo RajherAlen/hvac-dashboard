@@ -198,6 +198,8 @@ export type Database = {
           title: string
           notes: string | null
           estimate_hours: number
+          /** Dogovorena cijena posla (€). Postoji tek nakon migracije 20261110. */
+          price?: number | null
           status: WorkOrderStatus
           service_case_id: string | null
           created_by: string | null
@@ -362,6 +364,11 @@ export type Database = {
     Views: {
       device_service_status: {
         Row: { device_id: string; last_service_date: string | null; next_service_due: string | null }
+        Relationships: []
+      }
+      /** Postoji tek nakon migracije 20261110. */
+      work_order_hours: {
+        Row: { work_order_id: string; total_hours: number }
         Relationships: []
       }
     }

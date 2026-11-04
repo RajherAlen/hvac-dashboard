@@ -9,6 +9,7 @@ import { OFFICE_SITE } from '../../lib/clients';
 import { errorMessage } from '../../lib/errors';
 import { formatWeekday } from '../../lib/format-date';
 import { cn, formatHours, hoursToInput, parseHours, todayISO } from '../../lib/utils';
+import { moneyToInput, parseMoney } from '../../lib/money';
 import type { WorkOrderKind } from '../../types';
 import { Dialog } from '../ui/Dialog';
 import { Field, FormActions, FormError } from '../ui/form';
@@ -37,7 +38,13 @@ let rowSeq = 0;
 const newKey = () => `r${++rowSeq}`;
 
 /** Novi nalog ili uređivanje: objekt, uređaji, vrsta, opis i dodjele (tehničar · dan · sati). */
-export function OrderFormDialog({ order, preset, onClose }: { order?: OrderDetail | null; preset?: OrderPreset; onClose: () => void }) {
+export function OrderFormDialog({ order, preset, onClose, onSaved }: {
+  order?: OrderDetail | null;
+  preset?: OrderPreset;
+  onClose: () => void;
+  /** Nakon spremanja: prvi dan dodjele (npr. da raspored prijeđe na taj tjedan) */
+  onSaved?: (firstDay?: string) => void;
+}) {
   const save = useSaveOrder();
   const dir = useClientDirectory();
   const { activeStaff } = useStaffDirectory();
@@ -53,6 +60,7 @@ export function OrderFormDialog({ order, preset, onClose }: { order?: OrderDetai
   const [titleTouched, setTitleTouched] = useState(!!order || !!preset?.title);
   const [notes, setNotes] = useState(order?.notes ?? '');
   const [estimate, setEstimate] = useState(hoursToInput(Number(order?.estimate_hours ?? KIND_DEFAULTS[initialKind].hours)));
+  const [price, setPrice] = useState(moneyToInput(order?.price));
   const [rows, setRows] = useState<Row[]>(() => {
     if (order) return [...order.work_order_assignments]
       .sort((a, b) => a.day.localeCompare(b.day))
@@ -99,6 +107,8 @@ export function OrderFormDialog({ order, preset, onClose }: { order?: OrderDetai
     if (!site) errs.site = 'Odaberite objekt ili „Ured / ostalo”';
     const est = parseHours(estimate);
     if (rows.length === 0 && (est === null || est <= 0)) errs.estimate = 'Upišite procjenu, npr. 2 ili 1,5';
+    const priceValue = parseMoney(price);
+    if (priceValue !== null && (Number.isNaN(priceValue) || priceValue < 0 || priceValue >= 1e8)) errs.price = 'Upišite iznos u eurima, npr. 450 ili 1.250,50';
     const parsed = rows.map(r => {
       const h = parseHours(r.hours);
       if (!r.employee_id) errs[`${r.key}-emp`] = 'Odaberite tehničara';
@@ -123,12 +133,14 @@ export function OrderFormDialog({ order, preset, onClose }: { order?: OrderDetai
         title: title.trim(),
         notes,
         estimate_hours: rows.length ? parsed[0].planned_hours : est!,
+        price: priceValue,
         service_case_id: order?.service_case_id ?? preset?.service_case_id ?? null,
         device_ids: realSite ? devices : [],
         assignments: parsed,
       });
       toast.success(isEdit ? 'Nalog spremljen' : rows.length ? 'Nalog dodan u raspored' : 'Nalog dodan na čekanje');
       onClose();
+      onSaved?.([...parsed].map(a => a.day).sort()[0]);
     } catch { /* FormError */ }
   };
 
@@ -235,6 +247,16 @@ export function OrderFormDialog({ order, preset, onClose }: { order?: OrderDetai
             </Field>
           )}
         </fieldset>
+
+        <Field label="Cijena posla" optional error={errors.price} hint="Dogovoreni iznos u eurima. Ostavite prazno ako još nije poznat.">
+          {p => (
+            <div className="relative w-40">
+              <input {...p} value={price} onChange={e => setPrice(e.target.value)} inputMode="decimal" placeholder="npr. 450"
+                className={inputClass(!!errors.price, 'pr-8 text-right tabular-nums')} />
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-500" aria-hidden="true">€</span>
+            </div>
+          )}
+        </Field>
 
         <Field label="Napomena za tehničara" optional>
           {p => <textarea {...p} value={notes} onChange={e => setNotes(e.target.value)} rows={2}

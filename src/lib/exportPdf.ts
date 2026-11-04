@@ -3,6 +3,8 @@ import { formatNumeric, formatDateTime } from './format-date';
 import { formatHours } from './utils';
 import type { WorkLog, Profile, ClientWithSites, WorkLogWithEmployee } from '../types';
 import { DEVICE_KIND_LABEL, siteAddress, CLIENT_KIND_LABEL } from './clients';
+import { KIND_KEYS, KIND_KEY_LABEL, flattenBreakdown, nodeRate, type Breakdown } from './hoursBreakdown';
+import { formatEur, formatRate } from './money';
 
 // ─── Shared helpers ────────────────────────────────────────────────────────
 
@@ -403,4 +405,75 @@ export function reportExport(ok: boolean) {
       description: 'Dopustite skočne prozore za ovu stranicu pa pokušajte ponovno.',
     });
   }
+}
+
+// ─── 5. Sati i vrijednost – gdje je otišlo vrijeme ──────────────────────────
+
+export function exportHoursValuePdf(
+  b: Breakdown,
+  periodLabel: string,
+  groupLabel: string,
+  filterLabel: string | null,
+  showValue: boolean,
+): boolean {
+  const t = b.total;
+  const rate = nodeRate(t);
+  const flat = flattenBreakdown(b.rows);
+  const html = `<!DOCTYPE html>
+<html lang="hr">
+<head>
+  <meta charset="UTF-8">
+  <title>Sati i vrijednost – ${esc(periodLabel)}</title>
+  <style>${baseStyles}
+    td.num, th.num { text-align: right; white-space: nowrap; }
+    tr.d0 td { font-weight: 600; }
+    tr.d1 td:first-child { padding-left: 28px; }
+    tr.d2 td:first-child { padding-left: 48px; color: #475569; }
+    tfoot td { font-weight: 700; border-top: 2px solid #cbd5e1; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Sati i vrijednost</h1>
+    <p>Period: <strong>${esc(periodLabel)}</strong> · Grupirano po: ${esc(groupLabel)}${filterLabel ? ` · Filtar: ${esc(filterLabel)}` : ''}</p>
+    <p>Generirano: ${formatDateTime(new Date())}</p>
+  </div>
+
+  <div class="summary">
+    <div class="stat"><div class="stat-label">Ukupni sati</div><div class="stat-value">${formatHours(t.hours)}</div></div>
+    <div class="stat"><div class="stat-label">Bez naloga</div><div class="stat-value">${formatHours(t.byKind.none)}</div></div>
+    ${showValue ? `<div class="stat"><div class="stat-label">Vrijednost</div><div class="stat-value">${formatEur(t.value)}</div></div>
+    <div class="stat"><div class="stat-label">Prosjek</div><div class="stat-value">${rate !== null ? formatRate(rate) : '—'}</div></div>` : ''}
+  </div>
+
+  <h2>Po vrsti posla</h2>
+  <table>
+    <thead><tr><th>Vrsta posla</th><th class="num">Sati</th><th class="num">Udio</th></tr></thead>
+    <tbody>
+      ${KIND_KEYS.filter(k => t.byKind[k] > 0).map(k => `<tr><td>${esc(KIND_KEY_LABEL[k])}</td><td class="num">${formatHours(t.byKind[k])}</td><td class="num">${Math.round((t.byKind[k] / t.hours) * 100)} %</td></tr>`).join('')}
+    </tbody>
+  </table>
+
+  <h2>Po ${esc(groupLabel.toLowerCase())}</h2>
+  ${flat.length === 0 ? '<p class="empty">U ovom periodu nema upisanih sati.</p>' : `<table>
+    <thead><tr><th>Naziv</th><th class="num">Sati</th><th class="num">Plan</th>${showValue ? '<th class="num">Vrijednost</th><th class="num">€/h</th>' : ''}</tr></thead>
+    <tbody>
+      ${flat.map(({ node: n, depth }) => {
+        const r = nodeRate(n);
+        return `<tr class="d${Math.min(depth, 2)}">
+          <td>${esc(n.label)}${n.sublabel && depth > 0 ? ` <span style="color:#64748b;font-weight:400">· ${esc(n.sublabel)}</span>` : ''}</td>
+          <td class="num">${formatHours(n.hours)}</td>
+          <td class="num">${n.plan > 0 ? formatHours(n.plan) : '—'}</td>
+          ${showValue ? `<td class="num">${n.value > 0 ? formatEur(n.value) : '—'}</td><td class="num">${r !== null ? formatRate(r) : '—'}</td>` : ''}
+        </tr>`;
+      }).join('')}
+    </tbody>
+    <tfoot><tr><td>Ukupno</td><td class="num">${formatHours(t.hours)}</td><td class="num">${t.plan > 0 ? formatHours(t.plan) : '—'}</td>${showValue ? `<td class="num">${formatEur(t.value)}</td><td class="num">${rate !== null ? formatRate(rate) : '—'}</td>` : ''}</tr></tfoot>
+  </table>`}
+
+  <p class="generated">Vrijednost = sati u periodu × (cijena naloga / svi sati na nalogu). Nalozi bez cijene i rad bez naloga nemaju vrijednost.</p>
+</body>
+</html>`;
+
+  return openPrintWindow(html);
 }

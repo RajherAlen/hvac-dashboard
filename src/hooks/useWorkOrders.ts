@@ -96,6 +96,8 @@ export interface SaveOrderInput {
   title: string;
   notes: string;
   estimate_hours: number;
+  /** Dogovorena cijena (€); null = nije upisana; izostavljeno = ne mijenja se. */
+  price?: number | null;
   service_case_id?: string | null;
   device_ids: string[];
   assignments: { id?: string; employee_id: string; day: string; planned_hours: number }[];
@@ -117,6 +119,7 @@ export function useSaveOrder() {
         p_order: {
           id: v.id ?? null, site_id: v.site_id, kind: v.kind, title: v.title, notes: v.notes,
           estimate_hours: v.estimate_hours, service_case_id: v.service_case_id ?? null,
+          ...(v.price !== undefined ? { price: v.price } : {}),
         },
         p_assignments: v.assignments,
         p_device_ids: v.device_ids,
