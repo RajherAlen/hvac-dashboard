@@ -32,12 +32,15 @@ export interface WorkLogFormValues {
   site_id?: string | null;
   /** Servisirani uređaji (neobavezno) */
   device_ids?: string[];
+  /** Redovni servis (pomiče rok sljedećeg servisa) ili popravak */
+  is_service?: boolean;
 }
 
 export type Client = Tables<'clients'>;
 export type Site = Tables<'sites'>;
 export type Device = Tables<'devices'>;
-export type { DeviceKind } from './database';
+export type { DeviceKind, ServiceCaseStatus } from './database';
+export type ServiceCase = Tables<'service_cases'>;
 
 export interface SiteWithDevices extends Site {
   devices: Device[];

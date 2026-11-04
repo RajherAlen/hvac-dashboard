@@ -24,6 +24,7 @@ import { MyHistoryPage } from './pages/employee/MyHistoryPage';
 import { ClientsPage } from './pages/clients/ClientsPage';
 import { ClientDetailPage } from './pages/clients/ClientDetailPage';
 import { LinkLegacyPage } from './pages/clients/LinkLegacyPage';
+import { ServicesPage } from './pages/services/ServicesPage';
 
 function Spinner() {
   return (
@@ -93,6 +94,7 @@ function AppRoutes() {
 
       <Route element={<RequireAuth requiredRole="admin"><AppShell /></RequireAuth>}>
         <Route path="/klijenti/povezivanje" element={<LinkLegacyPage />} />
+        <Route path="/servisi" element={<ServicesPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

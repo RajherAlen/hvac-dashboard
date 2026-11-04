@@ -147,6 +147,7 @@ export function useAddWorkLog() {
     onSuccess: () => {
       client.invalidateQueries({ queryKey: [QUERY_KEY] });
       client.invalidateQueries({ queryKey: [CHANGES_KEY] });
+      client.invalidateQueries({ queryKey: ['service_cases'] });
     },
   });
 }
@@ -168,6 +169,7 @@ export function useAddWorkLogs() {
             hours_worked: r.hours_worked,
             notes: r.notes || null,
             device_ids: r.device_ids ?? [],
+            is_service: r.is_service ?? true,
           })),
         });
         if (error) throw error;
@@ -188,6 +190,7 @@ export function useAddWorkLogs() {
     onSuccess: () => {
       client.invalidateQueries({ queryKey: [QUERY_KEY] });
       client.invalidateQueries({ queryKey: [CHANGES_KEY] });
+      client.invalidateQueries({ queryKey: ['service_cases'] });
     },
   });
 }
@@ -197,7 +200,7 @@ export function useUpdateWorkLog() {
   return useMutation({
     mutationFn: async ({ id, values }: { id: string; values: Partial<WorkLogFormValues> }) => {
       // Atomarno (polja + uređaji = jedan zapis u povijesti izmjena), ako je migracija pokrenuta
-      const rpc = await supabase.rpc('update_work_log', {
+      const args = {
         p_id: id,
         p_values: {
           log_date: values.log_date,
@@ -208,7 +211,10 @@ export function useUpdateWorkLog() {
           ...(values.site_id !== undefined ? { site_id: values.site_id } : {}),
         },
         p_device_ids: values.device_ids ?? null,
-      });
+      };
+      let rpc = await supabase.rpc('update_work_log', { ...args, p_is_service: values.is_service ?? null });
+      // Baza bez migracije 20261107 nema p_is_service – pokušaj bez njega
+      if (rpc.error && isMissingFunction(rpc.error)) rpc = await supabase.rpc('update_work_log', args);
       if (!rpc.error) return rpc.data;
       if (!isMissingFunction(rpc.error)) throw rpc.error;
 
@@ -240,6 +246,7 @@ export function useUpdateWorkLog() {
     onSuccess: () => {
       client.invalidateQueries({ queryKey: [QUERY_KEY] });
       client.invalidateQueries({ queryKey: [CHANGES_KEY] });
+      client.invalidateQueries({ queryKey: ['service_cases'] });
     },
   });
 }
@@ -254,6 +261,7 @@ export function useDeleteWorkLog() {
     onSuccess: () => {
       client.invalidateQueries({ queryKey: [QUERY_KEY] });
       client.invalidateQueries({ queryKey: [CHANGES_KEY] });
+      client.invalidateQueries({ queryKey: ['service_cases'] });
     },
   });
 }

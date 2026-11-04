@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, CalendarClock, Wrench } from 'lucide-react';
+import { AlertTriangle, CalendarClock, Wrench, ChevronRight } from 'lucide-react';
 import { useClientDirectory, useDeviceServiceStatus } from '../../hooks/useClients';
 import { DEVICE_KIND_LABEL, serviceState, siteAddress, SERVICE_SOON_DAYS } from '../../lib/clients';
 import { formatNumeric } from '../../lib/format-date';
@@ -39,6 +39,9 @@ export function ServiceDueCard() {
             {overdue > 0 && <span className="text-red-700 font-medium">, {overdue} {pluralHr(overdue, 'kasni', 'kasne', 'kasni')}</span>}
           </p>
         </div>
+        <Link to="/servisi" className="shrink-0 inline-flex items-center gap-0.5 text-sm font-medium text-blue-700 hover:text-blue-900 hover:underline">
+          Svi servisi <ChevronRight size={14} aria-hidden="true" />
+        </Link>
       </div>
       <ul className="divide-y divide-slate-100">
         {shown.map(x => {

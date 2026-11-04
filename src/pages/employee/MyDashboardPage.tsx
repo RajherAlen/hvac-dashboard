@@ -4,6 +4,7 @@ import { StatCard } from '../../components/StatCard';
 import { EmployeeTimeline } from '../../components/EmployeeTimeline';
 import { WorkLogForm } from '../../components/WorkLogForm';
 import { HoursChart } from '../../components/HoursChart';
+import { UpcomingServicesCard } from '../../components/services/UpcomingServicesCard';
 import { useAuth } from '../../hooks/useAuth';
 import { useWorkLogs } from '../../hooks/useWorkLogs';
 import {
@@ -135,6 +136,8 @@ export function MyDashboardPage() {
             color="green"
           />
         </div>
+
+        <UpcomingServicesCard />
 
         {/* Chart */}
         <HoursChart logs={last7Logs} mode="simple" title="Moji sati — zadnjih 7 dana" />
