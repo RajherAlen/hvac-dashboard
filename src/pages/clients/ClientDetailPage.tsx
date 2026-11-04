@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { DropdownMenu } from 'radix-ui';
 import { toast } from 'sonner';
 import {
@@ -55,6 +55,9 @@ export function ClientDetailPage() {
   const [siteForm, setSiteForm] = useState<{ site?: Site } | null>(null);
   const [mergeSite, setMergeSite] = useState<Site | null>(null);
   const [deviceForm, setDeviceForm] = useState<{ siteId: string } | null>(null);
+  // Nakon stvaranja novog klijenta (?uredaj=1) odmah se nudi unos prvog uređaja
+  const [searchParams, setSearchParams] = useSearchParams();
+  const askFirstDevice = searchParams.get('uredaj') === '1' ? sites.find(s => !s.archived_at) : undefined;
   const [openDevice, setOpenDevice] = useState<Device | null>(null);
   const [logFor, setLogFor] = useState<string | null>(null);
 
@@ -322,6 +325,9 @@ export function ClientDetailPage() {
       {editClient && <ClientFormDialog client={client} onClose={() => setEditClient(false)} />}
       {siteForm && <SiteFormDialog clientId={client.id} site={siteForm.site} onClose={() => setSiteForm(null)} />}
       {deviceForm && <DeviceFormDialog siteId={deviceForm.siteId} onClose={() => setDeviceForm(null)} />}
+      {!deviceForm && askFirstDevice && (
+        <DeviceFormDialog siteId={askFirstDevice.id} onClose={() => setSearchParams({}, { replace: true })} />
+      )}
       {openDevice && <DeviceDetailDialog device={openDevice} service={service[openDevice.id]} onClose={() => setOpenDevice(null)} />}
       {logFor && <WorkLogForm presetSiteId={logFor} onClose={() => setLogFor(null)} />}
       {mergeClient && (

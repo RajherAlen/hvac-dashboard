@@ -1,4 +1,5 @@
-export type DeviceKind = 'split' | 'multisplit' | 'vrf' | 'toplinska_pumpa' | 'kotao' | 'ventilacija' | 'ostalo'
+export type DeviceKind = 'split' | 'multisplit' | 'vrf' | 'toplinska_pumpa' | 'kotao' | 'plamenik' | 'ventilacija' | 'ostalo'
+export type ServiceCaseStatus = 'due' | 'contacted' | 'scheduled' | 'snoozed' | 'declined' | 'done'
 
 export type Json =
   | string
@@ -187,6 +188,34 @@ export type Database = {
         }
         Relationships: []
       }
+      service_cases: {
+        Row: {
+          id: string
+          site_id: string
+          due_date: string
+          status: ServiceCaseStatus
+          contacted_at: string | null
+          scheduled_for: string | null
+          assigned_to: string | null
+          snooze_until: string | null
+          note: string | null
+          work_log_id: string | null
+          closed_at: string | null
+          created_at: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: Record<string, never>
+        Update: {
+          status?: ServiceCaseStatus
+          contacted_at?: string | null
+          scheduled_for?: string | null
+          assigned_to?: string | null
+          snooze_until?: string | null
+          note?: string | null
+        }
+        Relationships: []
+      }
       work_log_changes: {
         Row: {
           id: number
@@ -207,10 +236,13 @@ export type Database = {
         Row: {
           work_log_id: string
           device_id: string
+          /** Postoji tek nakon migracije 20261107_service_cases.sql */
+          is_service?: boolean
         }
         Insert: {
           work_log_id: string
           device_id: string
+          is_service?: boolean
         }
         Update: {
           work_log_id?: string
@@ -288,7 +320,8 @@ export type Database = {
       }
     }
     Functions: {
-      update_work_log: { Args: { p_id: string; p_values: Json; p_device_ids?: string[] | null }; Returns: Database['public']['Tables']['work_logs']['Row'] }
+      update_work_log: { Args: { p_id: string; p_values: Json; p_device_ids?: string[] | null; p_is_service?: boolean | null }; Returns: Database['public']['Tables']['work_logs']['Row'] }
+      refresh_service_cases: { Args: { p_horizon_days?: number }; Returns: number }
       add_work_logs: { Args: { items: Json }; Returns: string[] }
       create_site_quick: {
         Args: { p_client_id: string | null; p_client_name: string | null; p_client_kind: string | null; p_address: string; p_city: string | null; p_label: string | null }

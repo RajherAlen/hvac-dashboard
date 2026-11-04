@@ -17,6 +17,7 @@ import { inputClass } from './ui/styles';
 import { DatePicker } from './ui/DatePicker';
 import { SitePicker } from './clients/SitePicker';
 import { DevicePicker } from './clients/DevicePicker';
+import { useWorkLogIsService } from '../hooks/useServiceCases';
 
 /** Iznad ovoga dnevnog zbroja upozoravamo (ne blokiramo). */
 const DAILY_WARN_HOURS = 12;
@@ -41,6 +42,7 @@ const hoursSchema = z
 const itemSchema = z.object({
   site: z.string(),
   device_ids: z.array(z.string()),
+  is_service: z.boolean(),
   location: z.string(),
   task_description: z.string().trim().min(3, 'Opišite posao (najmanje 3 znaka)'),
   hours: hoursSchema,
@@ -62,7 +64,7 @@ function makeSchema(clientsMode: boolean, legacyEdit: boolean) {
   });
 }
 
-const EMPTY_ITEM = { site: '', device_ids: [] as string[], location: '', task_description: '', hours: '' };
+const EMPTY_ITEM = { site: '', device_ids: [] as string[], is_service: true, location: '', task_description: '', hours: '' };
 
 interface WorkLogFormProps {
   editLog?: WorkLog | null;
@@ -71,9 +73,12 @@ interface WorkLogFormProps {
   employeeId?: string;
   /** Unaprijed odabran objekt (npr. "Upiši rad ovdje" na stranici klijenta) */
   presetSiteId?: string;
+  /** Unaprijed odabrani uređaji i opis (npr. "Upiši servis" iz nadolazećih servisa) */
+  presetDeviceIds?: string[];
+  presetTask?: string;
 }
 
-export function WorkLogForm({ editLog, onClose, employeeId, presetSiteId }: WorkLogFormProps) {
+export function WorkLogForm({ editLog, onClose, employeeId, presetSiteId, presetDeviceIds, presetTask }: WorkLogFormProps) {
   const { user } = useAuth();
   const addLogs = useAddWorkLogs();
   const updateLog = useUpdateWorkLog();
@@ -83,6 +88,7 @@ export function WorkLogForm({ editLog, onClose, employeeId, presetSiteId }: Work
   const { data: recent = [] } = useRecentSites(targetEmployee, clientsMode);
   const { data: locations = [] } = useLocationSuggestions();
   const { data: editDevices } = useWorkLogDevices(editLog ? [editLog.id] : [], clientsMode && !!editLog);
+  const { data: editIsService } = useWorkLogIsService(clientsMode && editLog ? editLog.id : undefined);
   const locationListId = useId();
   const isEdit = !!editLog;
   const legacyEdit = isEdit && !editLog?.site_id && editLog?.location !== OFFICE_LOCATION;
@@ -95,7 +101,7 @@ export function WorkLogForm({ editLog, onClose, employeeId, presetSiteId }: Work
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     mode: 'onTouched',
-    defaultValues: { log_date: todayISO(), items: [{ ...EMPTY_ITEM, site: presetSiteId ?? '', hours: '8' }], notes: '' },
+    defaultValues: { log_date: todayISO(), items: [{ ...EMPTY_ITEM, site: presetSiteId ?? '', device_ids: presetDeviceIds ?? [], task_description: presetTask ?? '', hours: presetTask ? '' : '8' }], notes: '' },
   });
   const { fields, append, remove } = useFieldArray({ control, name: 'items' });
 
@@ -106,6 +112,7 @@ export function WorkLogForm({ editLog, onClose, employeeId, presetSiteId }: Work
         items: [{
           site: editLog.site_id ?? (editLog.location === OFFICE_LOCATION ? OFFICE_SITE : ''),
           device_ids: editDevices?.[editLog.id] ?? [],
+          is_service: editIsService ?? true,
           location: editLog.location,
           task_description: editLog.task_description,
           hours: hoursToInput(Number(editLog.hours_worked)),
@@ -113,7 +120,7 @@ export function WorkLogForm({ editLog, onClose, employeeId, presetSiteId }: Work
         notes: editLog.notes ?? '',
       });
     }
-  }, [editLog, editDevices, reset]);
+  }, [editLog, editDevices, editIsService, reset]);
 
   // Koliko je zaposlenik već upisao odabrani dan (bez ovog unosa ako ga uređujemo)
   const [logDate, items] = useWatch({ control, name: ['log_date', 'items'] });
@@ -132,6 +139,7 @@ export function WorkLogForm({ editLog, onClose, employeeId, presetSiteId }: Work
       location: hit ? siteLabel(hit.site, hit.client) : it.location || 'Objekt',
       site_id: it.site,
       device_ids: it.device_ids,
+      ...(it.device_ids.length > 0 ? { is_service: it.is_service } : {}),
     };
   };
 
@@ -252,6 +260,16 @@ export function WorkLogForm({ editLog, onClose, employeeId, presetSiteId }: Work
                             <DevicePicker siteId={realSite} value={f.value} onChange={f.onChange} labelId={`${field.id}-dev`} />
                           )}
                         />
+                        {(item?.device_ids?.length ?? 0) > 0 && (
+                          <label className="mt-2.5 flex items-start gap-2.5 text-sm text-slate-800 cursor-pointer">
+                            <input type="checkbox" {...register(`items.${i}.is_service`)}
+                              className="mt-0.5 h-5 w-5 sm:h-4 sm:w-4 shrink-0 rounded border-slate-400 accent-blue-600" />
+                            <span>
+                              Redovni servis
+                              <span className="block text-xs text-slate-600">Pomiče rok sljedećeg servisa. Isključite ako je bio samo popravak.</span>
+                            </span>
+                          </label>
+                        )}
                       </div>
                     )}
                   </>

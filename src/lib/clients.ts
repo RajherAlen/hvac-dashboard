@@ -7,6 +7,7 @@ export const DEVICE_KIND_LABEL: Record<DeviceKind, string> = {
   vrf: 'VRF sustav',
   toplinska_pumpa: 'Toplinska pumpa',
   kotao: 'Kotao',
+  plamenik: 'Plamenik',
   ventilacija: 'Ventilacija / rekuperator',
   ostalo: 'Ostalo',
 };

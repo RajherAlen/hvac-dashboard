@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Search, X, PlusCircle, ChevronRight, AlertTriangle, CalendarClock, Link2, Building2 } from 'lucide-react';
 import { useClientDirectory, useDeviceServiceStatus, useLastVisitBySite } from '../../hooks/useClients';
 import { useAuth } from '../../hooks/useAuth';
@@ -26,6 +26,7 @@ export function ClientsPage() {
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
   const [creating, setCreating] = useState(false);
+  const navigate = useNavigate();
   const today = todayISO();
 
   const rows = useMemo(() => dir.clients.map(c => {
@@ -156,7 +157,10 @@ export function ClientsPage() {
         )}
       </div>
 
-      {creating && <ClientFormDialog onClose={() => setCreating(false)} />}
+      {creating && (
+        <ClientFormDialog onClose={() => setCreating(false)}
+          onCreated={id => navigate(`/klijenti/${id}?uredaj=1`)} />
+      )}
     </div>
   );
 }

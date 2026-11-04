@@ -107,6 +107,7 @@ export function ClientFormDialog({ client, onClose, onCreated }: {
         {!isEdit && (
           <fieldset className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3 sm:p-4">
             <legend className="px-1 text-sm font-medium text-slate-700">Prvi objekt</legend>
+            <p className="-mt-1 text-xs text-slate-600">Uređaje na ovoj adresi (klime, plamenike) dodajete odmah nakon spremanja.</p>
             <Field label="Adresa" required error={errors.address?.message}>
               {p => <input {...p} {...register('address')} required className={inputClass(!!errors.address)} placeholder="npr. Ilica 34" />}
             </Field>
@@ -193,7 +194,7 @@ export function SiteFormDialog({ clientId, site, onClose }: { clientId: string; 
 // ─── Uređaj ─────────────────────────────────────────────────────────────────
 
 const deviceSchema = z.object({
-  kind: z.enum(['split', 'multisplit', 'vrf', 'toplinska_pumpa', 'kotao', 'ventilacija', 'ostalo']),
+  kind: z.enum(['split', 'multisplit', 'vrf', 'toplinska_pumpa', 'kotao', 'plamenik', 'ventilacija', 'ostalo']),
   brand: z.string().optional(),
   model: z.string().optional(),
   serial_number: z.string().optional(),
