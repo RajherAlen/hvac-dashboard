@@ -54,7 +54,8 @@ export function Dialog({ open = true, onClose, title, description, children, cla
             // mobitel: bottom sheet
             'inset-x-0 bottom-0 max-h-[92dvh] rounded-t-2xl pb-[env(safe-area-inset-bottom)]',
             // ≥ sm: centrirani modal
-            'sm:inset-auto sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:w-[calc(100%-2rem)] sm:max-w-md sm:rounded-2xl sm:max-h-[90dvh]',
+            // Centriranje bez translate(-50%): polovični pikseli inače tresu sadržaj pri svakom ponovnom iscrtavanju (npr. hover)
+            'sm:inset-0 sm:m-auto sm:h-fit sm:w-[calc(100%-2rem)] sm:max-w-md sm:rounded-2xl sm:max-h-[90dvh]',
             'data-[state=open]:animate-[sheet-in_180ms_ease-out] sm:data-[state=open]:animate-[fade-in_150ms_ease-out]',
             className,
           )}
@@ -75,7 +76,7 @@ export function Dialog({ open = true, onClose, title, description, children, cla
               <X size={18} aria-hidden="true" />
             </D.Close>
           </div>
-          <div className="overflow-y-auto overscroll-contain">{children}</div>
+          <div className="min-h-0 overflow-y-auto overscroll-contain">{children}</div>
         </D.Content>
       </D.Portal>
     </D.Root>

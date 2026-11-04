@@ -26,6 +26,7 @@ import { ClientDetailPage } from './pages/clients/ClientDetailPage';
 import { LinkLegacyPage } from './pages/clients/LinkLegacyPage';
 import { ServicesPage } from './pages/services/ServicesPage';
 import { SchedulePage } from './pages/schedule/SchedulePage';
+import { HoursValuePage } from './pages/admin/HoursValuePage';
 
 function Spinner() {
   return (
@@ -97,6 +98,7 @@ function AppRoutes() {
         <Route path="/klijenti/povezivanje" element={<LinkLegacyPage />} />
         <Route path="/servisi" element={<ServicesPage />} />
         <Route path="/raspored" element={<SchedulePage />} />
+        <Route path="/sati" element={<HoursValuePage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

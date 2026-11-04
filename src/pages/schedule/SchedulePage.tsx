@@ -10,6 +10,7 @@ import {
   Plus, PlusCircle, Trash2, UserRound, Wrench,
 } from 'lucide-react';
 import { addDays, parseISO } from 'date-fns';
+import { useNavigate } from 'react-router-dom';
 import { usePeriod } from '../../hooks/usePeriod';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { useStaffDirectory } from '../../hooks/useStaffDirectory';
@@ -47,7 +48,7 @@ const short = (v: number) => `${String(Math.round(v * 10) / 10).replace('.', ','
 
 export function SchedulePage() {
   useDocumentTitle('Raspored');
-  const period = usePeriod('week', ['week']);
+  const period = usePeriod('week', ['week'], { allowFuture: true });
   const { start, end, days } = period;
   const today = todayISO();
   const directory = useStaffDirectory();
@@ -64,6 +65,7 @@ export function SchedulePage() {
   const [creating, setCreating] = useState<OrderPreset | null>(null);
   const [openOrder, setOpenOrder] = useState<string | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   const plan = useMemo(() => planQ.data ?? [], [planQ.data]);
   const logs = useMemo(() => allLogs.filter(l => isStaff(l.profiles)), [allLogs]);
@@ -363,7 +365,10 @@ export function SchedulePage() {
         </DragOverlay>
       </DndContext>
 
-      {creating && <OrderFormDialog preset={creating} onClose={() => setCreating(null)} />}
+      {creating && (
+        <OrderFormDialog preset={creating} onClose={() => setCreating(null)}
+          onSaved={day => { if (day && (day < start || day > end)) navigate(`/raspored?view=week&date=${day}`); }} />
+      )}
       {openOrder && <OrderDrawer orderId={openOrder} onClose={() => setOpenOrder(null)} />}
     </div>
   );

@@ -1,3 +1,5 @@
+import type { WorkOrderKind } from '../types';
+
 /**
  * Boje grafova.
  *
@@ -18,6 +20,21 @@ export const EMPLOYEE_PALETTE = [
 ];
 
 export const NEUTRAL_COLOR = '#94a3b8';
+
+/**
+ * Boje vrsta posla – samo na stranici "Sati i vrijednost", gdje se ne prikazuju boje zaposlenika.
+ * Uzete iz iste CVD-provjerene palete; uz boju uvijek ide i riječ (i ikona).
+ */
+export const KIND_COLORS: Record<WorkOrderKind, string> = {
+  servis: '#1baf7a',
+  montaza: '#6250d6',
+  popravak: '#eb6834',
+  dijagnostika: '#eda100',
+  ostalo: '#64748b',
+};
+
+/** "Bez naloga" – šrafura na bijelom, ne puna boja (rad koji nije prošao kroz planiranje). */
+export const NO_ORDER_COLOR = '#94a3b8';
 
 function hash(s: string): number {
   let h = 0;

@@ -38,7 +38,12 @@ function parseAnchor(view: PeriodView, raw: string | null): Date {
  * Odabrani period u URL-u: ?view=week&date=2026-11-02 · ?view=month&date=2026-11 ·
  * ?view=custom&from=2026-10-06&to=2026-11-04 — link se može podijeliti, back gumb radi.
  */
-export function usePeriod(defaultView: PeriodView, allowed: PeriodView[] = ['week', 'month', 'custom']): Period {
+export function usePeriod(
+  defaultView: PeriodView,
+  allowed: PeriodView[] = ['week', 'month', 'custom'],
+  /** Raspored planira unaprijed; evidencija rada ne ide u budućnost */
+  { allowFuture = false }: { allowFuture?: boolean } = {},
+): Period {
   const [params, setParams] = useSearchParams();
   const today = todayISO();
 
@@ -99,7 +104,7 @@ export function usePeriod(defaultView: PeriodView, allowed: PeriodView[] = ['wee
 
   return {
     view, start, end, days, label, isCurrent,
-    canGoNext: view !== 'custom' && end < today,
+    canGoNext: view !== 'custom' && (allowFuture || end < today),
     setView, shift, goToday, setCustomRange,
   };
 }
