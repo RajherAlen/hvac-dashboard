@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { ArrowDownRight, ArrowUpRight, AlertTriangle } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -20,9 +21,11 @@ interface StatCardProps {
   isLoading?: boolean;
   /** Zadržano radi kompatibilnosti – boje kartica više nisu dekorativne. */
   color?: string;
+  /** Dodatni sadržaj ispod vrijednosti (npr. popis i akcija). */
+  footer?: ReactNode;
 }
 
-export function StatCard({ title, value, subtitle, icon: Icon, tone = 'default', delta, isLoading = false }: StatCardProps) {
+export function StatCard({ title, value, subtitle, icon: Icon, tone = 'default', delta, isLoading = false, footer }: StatCardProps) {
   const danger = tone === 'danger';
 
   return (
@@ -53,6 +56,7 @@ export function StatCard({ title, value, subtitle, icon: Icon, tone = 'default',
             </p>
           )}
           {delta && Number.isFinite(delta.ratio) && <DeltaBadge delta={delta} />}
+          {footer}
         </>
       )}
     </div>

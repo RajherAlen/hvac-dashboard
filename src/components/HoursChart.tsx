@@ -1,4 +1,5 @@
 import { useMemo, useId } from 'react';
+import { Link } from 'react-router-dom';
 import {
   BarChart,
   Bar,
@@ -24,6 +25,10 @@ interface HoursChartProps {
   mode?: 'stacked' | 'simple';
   title?: string;
   isLoading?: boolean;
+  /** Klik na stupac (dan / tjedan) – npr. otvara unose za taj period. */
+  onBucketClick?: (bucket: Bucket) => void;
+  /** Ako je zadano, stavke legende postaju linkovi na profil zaposlenika. */
+  employeeHref?: (employeeId: string) => string;
 }
 
 type Row = {
@@ -73,6 +78,8 @@ export function HoursChart({
   mode = 'simple',
   title = 'Sati po danu (zadnjih 7 dana)',
   isLoading = false,
+  onBucketClick,
+  employeeHref,
 }: HoursChartProps) {
   const titleId = useId();
   const days = propDays ?? getLast7Days();
@@ -137,11 +144,24 @@ export function HoursChart({
 
   return (
     <figure className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 sm:p-5 m-0" aria-labelledby={titleId}>
-      <figcaption id={titleId} className="text-sm font-semibold text-slate-800 mb-3">{title}</figcaption>
+      <figcaption id={titleId} className="flex items-baseline justify-between gap-2 mb-3">
+        <span className="text-sm font-semibold text-slate-800">{title}</span>
+        {onBucketClick && <span className="hidden sm:inline text-xs text-slate-500">Kliknite stupac za unose</span>}
+      </figcaption>
 
       <div role="img" aria-label={summary} className="-ml-2">
         <ResponsiveContainer width="100%" height={240}>
-          <BarChart data={rows} margin={{ top: isStacked ? 18 : 8, right: 4, left: 0, bottom: 0 }} barCategoryGap={many ? '15%' : '25%'}>
+          <BarChart
+            data={rows}
+            margin={{ top: isStacked ? 18 : 8, right: 4, left: 0, bottom: 0 }}
+            barCategoryGap={many ? '15%' : '25%'}
+            style={onBucketClick ? { cursor: 'pointer' } : undefined}
+            onClick={state => {
+              if (!onBucketClick) return;
+              const row = rows.find(r => r.key === state?.activeLabel) ?? rows[Number(state?.activeIndex)];
+              if (row && !row.isFuture) onBucketClick(row.bucket);
+            }}
+          >
             <defs>
               <pattern id={`${titleId}-hatch`} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
                 <rect width="6" height="6" fill="#f8fafc" />
@@ -220,11 +240,24 @@ export function HoursChart({
 
       {/* Legenda: samo zaposlenici koji imaju sate u periodu */}
       {(isStacked || hasFuture) && (
-        <ul className="flex flex-wrap gap-x-4 gap-y-1.5 mt-3 text-xs text-slate-600" aria-hidden="true">
+        <ul className="flex flex-wrap gap-x-4 gap-y-1.5 mt-3 text-xs text-slate-600" aria-label="Legenda">
           {series.map(emp => (
-            <li key={emp.id} className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: colors[emp.id] }} />
-              {emp.full_name}
+            <li key={emp.id}>
+              {employeeHref ? (
+                <Link
+                  to={employeeHref(emp.id)}
+                  className="flex items-center gap-1.5 -mx-1 px-1 py-0.5 rounded hover:bg-slate-100 hover:text-slate-900 hover:underline"
+                  title={`Otvori profil: ${emp.full_name}`}
+                >
+                  <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: colors[emp.id] }} aria-hidden="true" />
+                  {emp.full_name}
+                </Link>
+              ) : (
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: colors[emp.id] }} aria-hidden="true" />
+                  {emp.full_name}
+                </span>
+              )}
             </li>
           ))}
           {isStacked && series.length === 0 && <li className="text-slate-500">Nema evidentiranih sati u periodu.</li>}

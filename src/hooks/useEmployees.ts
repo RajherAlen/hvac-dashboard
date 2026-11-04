@@ -32,6 +32,46 @@ export function useEmployee(id: string | undefined) {
   });
 }
 
+/**
+ * Zadnja prijava po korisniku (iz auth.users preko RPC-a).
+ * Vraća null ako migracija još nije pokrenuta – UI tada koristi procjenu.
+ */
+export function useEmployeeAuthStatus() {
+  return useQuery({
+    queryKey: ['employees', 'auth-status'],
+    retry: false,
+    staleTime: 60_000,
+    queryFn: async (): Promise<Record<string, { lastSignInAt: string | null }> | null> => {
+      const { data, error } = await supabase.rpc('employee_auth_status');
+      if (error) {
+        console.warn('[employee_auth_status] nedostupno – pokrenite migraciju 20261104_employee_status.sql', error.message);
+        return null;
+      }
+      const out: Record<string, { lastSignInAt: string | null }> = {};
+      for (const r of data ?? []) out[r.id] = { lastSignInAt: r.last_sign_in_at };
+      return out;
+    },
+  });
+}
+
+export function useSetEmployeeActive() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ employeeId, active }: { employeeId: string; active: boolean }) => {
+      const { data, error } = await supabase.rpc('set_employee_active', { employee_id: employeeId, active });
+      if (error) {
+        if (/function .* does not exist|could not find the function/i.test(error.message)) {
+          throw new Error('Deaktivacija još nije omogućena – administrator treba pokrenuti migraciju baze (employee_status).');
+        }
+        throw new Error(error.message);
+      }
+      const result = data as { error?: string } | null;
+      if (result?.error) throw new Error(result.error);
+    },
+    onSuccess: () => client.invalidateQueries({ queryKey: ['employees'] }),
+  });
+}
+
 export interface CreateEmployeePayload {
   full_name: string;
   email: string;

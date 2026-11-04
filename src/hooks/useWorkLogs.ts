@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import type { WorkLogFilters, WorkLogFormValues } from '../types';
+import { CHANGES_KEY, isMissingFunction } from './useWorkLogChanges';
 
 const QUERY_KEY = 'work_logs';
 
@@ -125,10 +126,12 @@ export function useWorkLogCount(employeeId: string | undefined) {
 export function useAddWorkLog() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: async (values: WorkLogFormValues & { employee_id: string }) => {
+    mutationFn: async (values: WorkLogFormValues & { employee_id: string; id?: string }) => {
       const { data, error } = await supabase
         .from('work_logs')
         .insert({
+          ...(values.id ? { id: values.id } : {}),
+          ...(values.site_id !== undefined ? { site_id: values.site_id } : {}),
           employee_id: values.employee_id,
           log_date: values.log_date,
           task_description: values.task_description,
@@ -141,7 +144,51 @@ export function useAddWorkLog() {
       if (error) throw error;
       return data;
     },
-    onSuccess: () => client.invalidateQueries({ queryKey: [QUERY_KEY] }),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: [QUERY_KEY] });
+      client.invalidateQueries({ queryKey: [CHANGES_KEY] });
+    },
+  });
+}
+
+/** Više stavki odjednom (npr. jedan dan na više lokacija) – jedan insert, sve ili ništa. */
+export function useAddWorkLogs() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (rows: (WorkLogFormValues & { employee_id: string })[]) => {
+      // S objektima/uređajima: atomarni RPC (unosi + veze na uređaje u jednoj transakciji)
+      if (rows.some(r => r.site_id !== undefined)) {
+        const { error } = await supabase.rpc('add_work_logs', {
+          items: rows.map(r => ({
+            employee_id: r.employee_id,
+            log_date: r.log_date,
+            site_id: r.site_id ?? null,
+            location: r.location,
+            task_description: r.task_description,
+            hours_worked: r.hours_worked,
+            notes: r.notes || null,
+            device_ids: r.device_ids ?? [],
+          })),
+        });
+        if (error) throw error;
+        return;
+      }
+      const { error } = await supabase.from('work_logs').insert(
+        rows.map(v => ({
+          employee_id: v.employee_id,
+          log_date: v.log_date,
+          task_description: v.task_description,
+          location: v.location,
+          hours_worked: v.hours_worked,
+          notes: v.notes || null,
+        })),
+      );
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: [QUERY_KEY] });
+      client.invalidateQueries({ queryKey: [CHANGES_KEY] });
+    },
   });
 }
 
@@ -149,6 +196,22 @@ export function useUpdateWorkLog() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, values }: { id: string; values: Partial<WorkLogFormValues> }) => {
+      // Atomarno (polja + uređaji = jedan zapis u povijesti izmjena), ako je migracija pokrenuta
+      const rpc = await supabase.rpc('update_work_log', {
+        p_id: id,
+        p_values: {
+          log_date: values.log_date,
+          task_description: values.task_description,
+          location: values.location,
+          hours_worked: values.hours_worked,
+          notes: values.notes || null,
+          ...(values.site_id !== undefined ? { site_id: values.site_id } : {}),
+        },
+        p_device_ids: values.device_ids ?? null,
+      });
+      if (!rpc.error) return rpc.data;
+      if (!isMissingFunction(rpc.error)) throw rpc.error;
+
       const { data, error } = await supabase
         .from('work_logs')
         .update({
@@ -157,14 +220,27 @@ export function useUpdateWorkLog() {
           location: values.location,
           hours_worked: values.hours_worked,
           notes: values.notes || null,
+          ...(values.site_id !== undefined ? { site_id: values.site_id } : {}),
         })
         .eq('id', id)
         .select()
         .single();
       if (error) throw error;
+      // Uređaji: zamijeni skup veza
+      if (values.device_ids) {
+        const del = await supabase.from('work_log_devices').delete().eq('work_log_id', id);
+        if (del.error) throw del.error;
+        if (values.device_ids.length > 0) {
+          const ins = await supabase.from('work_log_devices').insert(values.device_ids.map(device_id => ({ work_log_id: id, device_id })));
+          if (ins.error) throw ins.error;
+        }
+      }
       return data;
     },
-    onSuccess: () => client.invalidateQueries({ queryKey: [QUERY_KEY] }),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: [QUERY_KEY] });
+      client.invalidateQueries({ queryKey: [CHANGES_KEY] });
+    },
   });
 }
 
@@ -175,6 +251,9 @@ export function useDeleteWorkLog() {
       const { error } = await supabase.from('work_logs').delete().eq('id', id);
       if (error) throw error;
     },
-    onSuccess: () => client.invalidateQueries({ queryKey: [QUERY_KEY] }),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: [QUERY_KEY] });
+      client.invalidateQueries({ queryKey: [CHANGES_KEY] });
+    },
   });
 }

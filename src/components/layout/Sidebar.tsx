@@ -8,7 +8,9 @@ import {
   LogOut,
   Wind,
   UserCircle,
+  Building2,
 } from 'lucide-react';
+import { useClientDirectory } from '../../hooks/useClients';
 import { useAuth } from '../../hooks/useAuth';
 import { useEmployee } from '../../hooks/useEmployees';
 import { EditProfileModal } from '../EditProfileModal';
@@ -21,19 +23,23 @@ interface SidebarProps {
 const adminLinks = [
   { to: '/admin/dashboard', icon: LayoutDashboard, label: 'Nadzorna ploča' },
   { to: '/admin/employees', icon: Users, label: 'Zaposlenici' },
+  { to: '/klijenti', icon: Building2, label: 'Klijenti' },
 ];
 
 const employeeLinks = [
   { to: '/my/dashboard', icon: LayoutDashboard, label: 'Moja nadzorna ploča' },
   { to: '/my/log', icon: PlusCircle, label: 'Unos rada' },
   { to: '/my/history', icon: History, label: 'Moja povijest' },
+  { to: '/klijenti', icon: Building2, label: 'Klijenti' },
 ];
 
 export function Sidebar({ onClose }: SidebarProps) {
   const { role, user, signOut } = useAuth();
   const { data: profile, isLoading: profileLoading } = useEmployee(user?.id);
   const [showProfile, setShowProfile] = useState(false);
-  const links = role === 'admin' ? adminLinks : employeeLinks;
+  // Klijenti se prikazuju tek kad je migracija pokrenuta
+  const { missingSchema } = useClientDirectory();
+  const links = (role === 'admin' ? adminLinks : employeeLinks).filter(l => l.to !== '/klijenti' || !missingSchema);
 
   return (
     <aside className="flex flex-col h-full bg-slate-900 text-slate-100 w-64">

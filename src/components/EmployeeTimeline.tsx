@@ -7,7 +7,9 @@ import { formatDayLong, formatWeekday, capitalize } from '../lib/format-date';
 import { errorMessage } from '../lib/errors';
 import { useDeleteWorkLog, useAddWorkLog } from '../hooks/useWorkLogs';
 import { WorkLogForm } from './WorkLogForm';
+import { LogLocation } from './clients/LogLocation';
 import { ConfirmDialog } from './ui/ConfirmDialog';
+import { EditStamp, WorkLogHistoryDialog } from './WorkLogHistory';
 
 interface EmployeeTimelineProps {
   logs: WorkLogWithEmployee[];
@@ -28,6 +30,7 @@ export function EmployeeTimeline({ logs, canEdit = false, pageSize = 10 }: Emplo
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [editLog, setEditLog] = useState<WorkLog | null>(null);
   const [deleting, setDeleting] = useState<WorkLog | null>(null);
+  const [historyOf, setHistoryOf] = useState<WorkLog | null>(null);
   const deleteLog = useDeleteWorkLog();
   const addLog = useAddWorkLog();
 
@@ -54,6 +57,9 @@ export function EmployeeTimeline({ logs, canEdit = false, pageSize = 10 }: Emplo
         onClick: () =>
           addLog.mutate(
             {
+              // Isti ID → povijest unosa ostaje cjelovita ("Obrisano", pa "Vraćeno")
+              id: removed.id,
+              ...(removed.site_id !== undefined ? { site_id: removed.site_id } : {}),
               employee_id: removed.employee_id,
               log_date: removed.log_date,
               task_description: removed.task_description,
@@ -106,6 +112,7 @@ export function EmployeeTimeline({ logs, canEdit = false, pageSize = 10 }: Emplo
           onToggle={() => toggle(date)}
           onEdit={setEditLog}
           onDelete={setDeleting}
+          onHistory={setHistoryOf}
         />
       ))}
 
@@ -120,6 +127,7 @@ export function EmployeeTimeline({ logs, canEdit = false, pageSize = 10 }: Emplo
       )}
 
       {editLog && <WorkLogForm editLog={editLog} onClose={() => setEditLog(null)} />}
+      {historyOf && <WorkLogHistoryDialog log={historyOf} onClose={() => setHistoryOf(null)} />}
 
       <ConfirmDialog
         open={!!deleting}
@@ -143,7 +151,7 @@ export function EmployeeTimeline({ logs, canEdit = false, pageSize = 10 }: Emplo
 }
 
 function DayGroup({
-  date, logs, canEdit, expanded, onToggle, onEdit, onDelete,
+  date, logs, canEdit, expanded, onToggle, onEdit, onDelete, onHistory,
 }: {
   date: string;
   logs: WorkLogWithEmployee[];
@@ -152,6 +160,7 @@ function DayGroup({
   onToggle: () => void;
   onEdit: (l: WorkLog) => void;
   onDelete: (l: WorkLog) => void;
+  onHistory: (l: WorkLog) => void;
 }) {
   const panelId = useId();
   const totalHours = logs.reduce((s, l) => s + Number(l.hours_worked), 0);
@@ -205,7 +214,7 @@ function DayGroup({
                     <span className="flex items-center gap-1 text-xs text-slate-600">
                       <MapPin size={12} className="shrink-0" aria-hidden="true" />
                       <span className="sr-only">Lokacija:</span>
-                      {log.location}
+                      <LogLocation log={log} />
                     </span>
                     <span className="flex items-center gap-1 text-xs text-slate-600 tabular-nums">
                       <Clock size={12} className="shrink-0" aria-hidden="true" />
@@ -214,6 +223,7 @@ function DayGroup({
                     </span>
                   </div>
                   {log.notes && <p className="mt-1.5 text-xs text-slate-600 italic">{log.notes}</p>}
+                  <EditStamp log={log} onOpen={() => onHistory(log)} />
                 </div>
 
                 {canEdit && (

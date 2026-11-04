@@ -1,112 +1,158 @@
-import { useEffect, useId } from 'react';
-import { useForm, Controller, useWatch } from 'react-hook-form';
+import { useEffect, useId, useMemo } from 'react';
+import { useForm, Controller, useWatch, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
-import { AlertTriangle } from 'lucide-react';
-import { useAddWorkLog, useUpdateWorkLog, useWorkLogs, useLocationSuggestions } from '../hooks/useWorkLogs';
+import { AlertTriangle, MapPin, Plus, X, History } from 'lucide-react';
+import { useAddWorkLogs, useUpdateWorkLog, useWorkLogs, useLocationSuggestions } from '../hooks/useWorkLogs';
+import { useClientDirectory, useRecentSites, useWorkLogDevices } from '../hooks/useClients';
 import { useAuth } from '../hooks/useAuth';
-import { todayISO, parseHours, hoursToInput, formatHours, cn } from '../lib/utils';
+import { todayISO, parseHours, hoursToInput, formatHours, cn, pluralHr } from '../lib/utils';
 import { errorMessage } from '../lib/errors';
+import { OFFICE_LOCATION, OFFICE_SITE, siteLabel } from '../lib/clients';
 import type { WorkLog } from '../types';
 import { Dialog } from './ui/Dialog';
 import { Field, FormActions, FormError } from './ui/form';
 import { inputClass } from './ui/styles';
 import { DatePicker } from './ui/DatePicker';
+import { SitePicker } from './clients/SitePicker';
+import { DevicePicker } from './clients/DevicePicker';
 
 /** Iznad ovoga dnevnog zbroja upozoravamo (ne blokiramo). */
 const DAILY_WARN_HOURS = 12;
-const QUICK_HOURS = [4, 6, 7, 8];
+const QUICK_HOURS = [2, 4, 6, 8];
+const MAX_ITEMS = 8;
 
-const schema = z.object({
-  log_date: z.string().min(1, 'Odaberite datum'),
-  task_description: z.string().trim().min(3, 'Opišite zadatak (najmanje 3 znaka)'),
-  location: z.string().trim().min(2, 'Upišite lokaciju'),
-  hours: z
-    .string()
-    .trim()
-    .min(1, 'Upišite broj sati')
-    .refine(v => parseHours(v) !== null, 'Upišite npr. 8, 7,5 ili 7:30')
-    .refine(v => {
-      const h = parseHours(v);
-      return h === null || (h >= 0.25 && h <= 24);
-    }, 'Između 15 min i 24 h'),
-  notes: z.string(),
+const hoursSchema = z
+  .string()
+  .trim()
+  .min(1, 'Upišite broj sati')
+  .refine(v => parseHours(v) !== null, 'Upišite npr. 8, 7,5 ili 7:30')
+  .refine(v => {
+    const h = parseHours(v);
+    return h === null || (h >= 0.25 && h <= 24);
+  }, 'Između 15 min i 24 h');
+
+/**
+ * Jedna stavka = jedan objekt klijenta (ili "Ured / ostalo"), s opisom, satima i
+ * neobaveznim popisom servisiranih uređaja. Dok modul klijenata nije uključen,
+ * stavka koristi slobodni tekst lokacije kao prije.
+ */
+const itemSchema = z.object({
+  site: z.string(),
+  device_ids: z.array(z.string()),
+  location: z.string(),
+  task_description: z.string().trim().min(3, 'Opišite posao (najmanje 3 znaka)'),
+  hours: hoursSchema,
 });
 
-type FormValues = z.infer<typeof schema>;
+type FormValues = { log_date: string; items: z.infer<typeof itemSchema>[]; notes: string };
+
+function makeSchema(clientsMode: boolean, legacyEdit: boolean) {
+  return z.object({
+    log_date: z.string().min(1, 'Odaberite datum'),
+    items: z.array(itemSchema.superRefine((it, ctx) => {
+      if (clientsMode) {
+        if (!it.site && !legacyEdit) ctx.addIssue({ code: 'custom', path: ['site'], message: 'Odaberite objekt ili „Ured / ostalo”' });
+      } else if (it.location.trim().length < 2) {
+        ctx.addIssue({ code: 'custom', path: ['location'], message: 'Upišite lokaciju' });
+      }
+    })).min(1),
+    notes: z.string(),
+  });
+}
+
+const EMPTY_ITEM = { site: '', device_ids: [] as string[], location: '', task_description: '', hours: '' };
 
 interface WorkLogFormProps {
   editLog?: WorkLog | null;
   onClose: () => void;
   /** Admin može unositi za drugog zaposlenika; inače je to trenutni korisnik */
   employeeId?: string;
+  /** Unaprijed odabran objekt (npr. "Upiši rad ovdje" na stranici klijenta) */
+  presetSiteId?: string;
 }
 
-export function WorkLogForm({ editLog, onClose, employeeId }: WorkLogFormProps) {
+export function WorkLogForm({ editLog, onClose, employeeId, presetSiteId }: WorkLogFormProps) {
   const { user } = useAuth();
-  const addLog = useAddWorkLog();
+  const addLogs = useAddWorkLogs();
   const updateLog = useUpdateWorkLog();
-  const { data: locations = [] } = useLocationSuggestions();
-  const locationListId = useId();
+  const dir = useClientDirectory();
+  const clientsMode = dir.enabled;
   const targetEmployee = editLog?.employee_id ?? employeeId ?? user?.id;
+  const { data: recent = [] } = useRecentSites(targetEmployee, clientsMode);
+  const { data: locations = [] } = useLocationSuggestions();
+  const { data: editDevices } = useWorkLogDevices(editLog ? [editLog.id] : [], clientsMode && !!editLog);
+  const locationListId = useId();
+  const isEdit = !!editLog;
+  const legacyEdit = isEdit && !editLog?.site_id && editLog?.location !== OFFICE_LOCATION;
+
+  const schema = useMemo(() => makeSchema(clientsMode, legacyEdit), [clientsMode, legacyEdit]);
 
   const {
-    register,
-    handleSubmit,
-    reset,
-    control,
-    setValue,
+    register, handleSubmit, reset, control, setValue,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     mode: 'onTouched',
-    defaultValues: {
-      log_date: todayISO(),
-      task_description: '',
-      location: '',
-      hours: '8',
-      notes: '',
-    },
+    defaultValues: { log_date: todayISO(), items: [{ ...EMPTY_ITEM, site: presetSiteId ?? '', hours: '8' }], notes: '' },
   });
+  const { fields, append, remove } = useFieldArray({ control, name: 'items' });
 
   useEffect(() => {
     if (editLog) {
       reset({
         log_date: editLog.log_date,
-        task_description: editLog.task_description,
-        location: editLog.location,
-        hours: hoursToInput(Number(editLog.hours_worked)),
+        items: [{
+          site: editLog.site_id ?? (editLog.location === OFFICE_LOCATION ? OFFICE_SITE : ''),
+          device_ids: editDevices?.[editLog.id] ?? [],
+          location: editLog.location,
+          task_description: editLog.task_description,
+          hours: hoursToInput(Number(editLog.hours_worked)),
+        }],
         notes: editLog.notes ?? '',
       });
     }
-  }, [editLog, reset]);
+  }, [editLog, editDevices, reset]);
 
   // Koliko je zaposlenik već upisao odabrani dan (bez ovog unosa ako ga uređujemo)
-  const [logDate, hoursInput] = useWatch({ control, name: ['log_date', 'hours'] });
+  const [logDate, items] = useWatch({ control, name: ['log_date', 'items'] });
   const { data: dayLogs = [] } = useWorkLogs({ employeeId: targetEmployee, startDate: logDate, endDate: logDate });
-  const alreadyLogged = dayLogs
-    .filter(l => l.id !== editLog?.id)
-    .reduce((s, l) => s + Number(l.hours_worked), 0);
-  const newHours = parseHours(hoursInput ?? '') ?? 0;
+  const alreadyLogged = dayLogs.filter(l => l.id !== editLog?.id).reduce((s, l) => s + Number(l.hours_worked), 0);
+  const newHours = (items ?? []).reduce((s, it) => s + (parseHours(it?.hours ?? '') ?? 0), 0);
   const projected = alreadyLogged + newHours;
   const overLimit = projected > DAILY_WARN_HOURS;
 
-  const onSubmit = async (values: FormValues) => {
-    const payload = {
-      log_date: values.log_date,
-      task_description: values.task_description,
-      location: values.location.trim().replace(/\s+/g, ' '),
-      hours_worked: parseHours(values.hours)!,
-      notes: values.notes,
+  const resolve = (it: FormValues['items'][number]) => {
+    if (!clientsMode) return { location: it.location.trim().replace(/\s+/g, ' ') };
+    if (it.site === OFFICE_SITE) return { location: OFFICE_LOCATION, site_id: null, device_ids: [] };
+    if (!it.site) return { location: it.location }; // stari unos ostaje nepovezan
+    const hit = dir.siteIndex.get(it.site);
+    return {
+      location: hit ? siteLabel(hit.site, hit.client) : it.location || 'Objekt',
+      site_id: it.site,
+      device_ids: it.device_ids,
     };
+  };
+
+  const onSubmit = async (values: FormValues) => {
+    const rows = values.items.map(it => ({
+      log_date: values.log_date,
+      task_description: it.task_description.trim(),
+      hours_worked: parseHours(it.hours)!,
+      notes: values.notes,
+      ...resolve(it),
+    }));
     try {
       if (editLog) {
-        await updateLog.mutateAsync({ id: editLog.id, values: payload });
+        await updateLog.mutateAsync({ id: editLog.id, values: rows[0] });
         toast.success('Promjene spremljene');
       } else {
-        await addLog.mutateAsync({ ...payload, employee_id: targetEmployee! });
-        toast.success('Unos dodan', { description: `${formatHours(payload.hours_worked)} · ${payload.location}` });
+        await addLogs.mutateAsync(rows.map(r => ({ ...r, employee_id: targetEmployee! })));
+        const total = rows.reduce((s, r) => s + r.hours_worked, 0);
+        toast.success(rows.length === 1 ? 'Unos dodan' : `Dodano ${rows.length} ${pluralHr(rows.length, 'stavka', 'stavke', 'stavki')}`, {
+          description: `${formatHours(total)} · ${rows.map(r => r.location).join(', ')}`,
+        });
       }
       onClose();
     } catch {
@@ -114,13 +160,11 @@ export function WorkLogForm({ editLog, onClose, employeeId }: WorkLogFormProps) 
     }
   };
 
-  const apiError = addLog.error || updateLog.error;
+  const apiError = addLogs.error || updateLog.error;
+  const placeNoun = clientsMode ? 'objekt' : 'lokaciju';
 
   return (
-    <Dialog
-      onClose={onClose}
-      title={editLog ? 'Uredi radni zapis' : 'Unos rada'}
-    >
+    <Dialog onClose={onClose} title={isEdit ? 'Uredi radni zapis' : 'Unos rada'} className="sm:max-w-lg">
       <form onSubmit={handleSubmit(onSubmit)} noValidate className="px-5 sm:px-6 py-5 space-y-4">
         <Field label="Datum" required error={errors.log_date?.message}>
           {p => (
@@ -134,93 +178,181 @@ export function WorkLogForm({ editLog, onClose, employeeId }: WorkLogFormProps) 
           )}
         </Field>
 
-        <Field label="Opis zadatka" required error={errors.task_description?.message}>
-          {p => (
-            <textarea
-              {...p}
-              {...register('task_description')}
-              required
-              rows={2}
-              placeholder="npr. Servis klime, pregled kotlovnice…"
-              className={inputClass(!!errors.task_description, 'resize-none')}
-            />
-          )}
-        </Field>
-
-        <Field label="Lokacija" required error={errors.location?.message} hint={locations.length > 0 ? 'Počnite tipkati za prijedloge iz prethodnih unosa' : undefined}>
-          {p => (
-            <>
-              <input
-                {...p}
-                {...register('location')}
-                type="text"
-                required
-                list={locationListId}
-                autoComplete="off"
-                placeholder="npr. Ilica 34, Zagreb"
-                className={inputClass(!!errors.location)}
-              />
-              <datalist id={locationListId}>
-                {locations.map(l => <option key={l} value={l} />)}
-              </datalist>
-            </>
-          )}
-        </Field>
-
-        <Field
-          label="Sati rada"
-          required
-          error={errors.hours?.message}
-          hint={
-            alreadyLogged > 0 ? (
-              <span className={cn(overLimit && 'text-amber-800')}>
-                Već upisano taj dan: <strong>{formatHours(alreadyLogged)}</strong>
-                {newHours > 0 && <> · ukupno s ovim unosom: <strong>{formatHours(projected)}</strong></>}
-              </span>
-            ) : 'Npr. 8, 7,5 ili 7:30'
-          }
-        >
-          {p => (
-            <div className="flex flex-wrap gap-2">
-              <input
-                {...p}
-                {...register('hours')}
-                type="text"
-                inputMode="decimal"
-                required
-                className={inputClass(!!errors.hours, 'w-24 flex-none text-right tabular-nums')}
-              />
-              <div className="flex gap-1.5 flex-1" role="group" aria-label="Brzi odabir sati">
-                {QUICK_HOURS.map(h => {
-                  const active = newHours === h;
-                  return (
-                    <button
-                      key={h}
-                      type="button"
-                      aria-pressed={active}
-                      onClick={() => setValue('hours', String(h), { shouldValidate: true, shouldDirty: true })}
-                      className={cn(
-                        'flex-1 min-h-11 sm:min-h-9 px-2 text-sm font-medium rounded-lg border transition-colors',
-                        active ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-300 text-slate-700 hover:bg-slate-50',
-                      )}
-                    >
-                      {h} h
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </Field>
-
-        {overLimit && !errors.hours && (
-          <p role="status" className="flex items-start gap-2 text-sm text-amber-900 bg-amber-50 border border-amber-200 px-3 py-2 rounded-lg">
-            <AlertTriangle size={15} className="shrink-0 mt-0.5" aria-hidden="true" />
-            Ukupno bi za taj dan bilo {formatHours(projected)} – više od {DAILY_WARN_HOURS} h. Provjerite unos.
-          </p>
+        {!clientsMode && (
+          <datalist id={locationListId}>
+            {locations.map(l => <option key={l} value={l} />)}
+          </datalist>
         )}
 
-        <Field label="Napomene" optional>
+        <fieldset className="space-y-3">
+          <legend className="text-sm font-medium text-slate-700 mb-1">
+            {isEdit ? 'Posao' : clientsMode ? 'Posao po objektima' : 'Posao po lokacijama'}
+          </legend>
+          {!isEdit && (
+            <p className="-mt-1 text-xs text-slate-600">
+              Radili ste na više mjesta? Dodajte svaki {placeNoun} kao zasebnu stavku sa svojim satima.
+            </p>
+          )}
+
+          {fields.map((field, i) => {
+            const e = errors.items?.[i];
+            const item = items?.[i];
+            const itemHours = parseHours(item?.hours ?? '');
+            const realSite = item?.site && item.site !== OFFICE_SITE ? item.site : null;
+            return (
+              <div key={field.id} className="relative rounded-xl border border-slate-200 bg-slate-50/60 p-3 sm:p-4 space-y-3">
+                {fields.length > 1 && (
+                  <div className="flex items-center justify-between -mt-1">
+                    <span className="text-xs font-semibold text-slate-600">Stavka {i + 1}</span>
+                    <button
+                      type="button"
+                      onClick={() => remove(i)}
+                      className="-mr-2 p-2 rounded-lg text-slate-500 hover:text-red-700 hover:bg-red-50"
+                      aria-label={`Ukloni stavku ${i + 1}`}
+                    >
+                      <X size={15} aria-hidden="true" />
+                    </button>
+                  </div>
+                )}
+
+                {clientsMode ? (
+                  <>
+                    {legacyEdit && !item?.site && (
+                      <p className="flex items-start gap-1.5 text-xs text-slate-700 bg-white border border-slate-200 rounded-lg px-2.5 py-2">
+                        <History size={13} className="mt-0.5 shrink-0 text-slate-500" aria-hidden="true" />
+                        <span>Stara lokacija: <strong className="font-medium">{editLog?.location}</strong>. Odaberite objekt da povežete unos s klijentom (neobavezno).</span>
+                      </p>
+                    )}
+                    <Field label="Objekt" required={!legacyEdit} error={e?.site?.message}>
+                      {p => (
+                        <Controller
+                          control={control}
+                          name={`items.${i}.site`}
+                          render={({ field }) => (
+                            <SitePicker
+                              {...p}
+                              value={field.value}
+                              onChange={v => { field.onChange(v); setValue(`items.${i}.device_ids`, []); }}
+                              onBlur={field.onBlur}
+                              recentSiteIds={recent}
+                            />
+                          )}
+                        />
+                      )}
+                    </Field>
+                    {realSite && (
+                      <div>
+                        <p id={`${field.id}-dev`} className="text-sm font-medium text-slate-700 mb-1">
+                          Servisirani uređaji <span className="font-normal text-slate-500">(neobavezno)</span>
+                        </p>
+                        <Controller
+                          control={control}
+                          name={`items.${i}.device_ids`}
+                          render={({ field: f }) => (
+                            <DevicePicker siteId={realSite} value={f.value} onChange={f.onChange} labelId={`${field.id}-dev`} />
+                          )}
+                        />
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <Field label="Lokacija" required error={e?.location?.message}>
+                    {p => (
+                      <div className="relative">
+                        <MapPin size={15} aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                        <input
+                          {...p}
+                          {...register(`items.${i}.location`)}
+                          type="text"
+                          required
+                          list={locationListId}
+                          autoComplete="off"
+                          placeholder="npr. Gradište"
+                          className={inputClass(!!e?.location, 'pl-9')}
+                        />
+                      </div>
+                    )}
+                  </Field>
+                )}
+
+                <Field label="Što je napravljeno" required error={e?.task_description?.message}>
+                  {p => (
+                    <input
+                      {...p}
+                      {...register(`items.${i}.task_description`)}
+                      type="text"
+                      required
+                      placeholder="npr. Redovni servis, čišćenje filtera"
+                      className={inputClass(!!e?.task_description)}
+                    />
+                  )}
+                </Field>
+
+                <Field label="Sati" required error={e?.hours?.message}>
+                  {p => (
+                    <div className="flex flex-wrap gap-2">
+                      <input
+                        {...p}
+                        {...register(`items.${i}.hours`)}
+                        type="text"
+                        inputMode="decimal"
+                        required
+                        placeholder="0"
+                        className={inputClass(!!e?.hours, 'w-24 flex-none text-right tabular-nums')}
+                      />
+                      <div className="flex gap-1.5 flex-1" role="group" aria-label={`Brzi odabir sati, stavka ${i + 1}`}>
+                        {QUICK_HOURS.map(h => (
+                          <button
+                            key={h}
+                            type="button"
+                            aria-pressed={itemHours === h}
+                            onClick={() => setValue(`items.${i}.hours`, String(h), { shouldValidate: true, shouldDirty: true })}
+                            className={cn(
+                              'flex-1 min-h-11 sm:min-h-9 px-2 text-sm font-medium rounded-lg border transition-colors',
+                              itemHours === h ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50',
+                            )}
+                          >
+                            {h} h
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </Field>
+              </div>
+            );
+          })}
+
+          {!isEdit && fields.length < MAX_ITEMS && (
+            <button
+              type="button"
+              onClick={() => append({ ...EMPTY_ITEM }, { shouldFocus: false })}
+              className="w-full min-h-11 inline-flex items-center justify-center gap-1.5 text-sm font-medium text-blue-700 border border-dashed border-blue-300 hover:bg-blue-50 rounded-xl"
+            >
+              <Plus size={15} aria-hidden="true" /> {clientsMode ? 'Dodaj još jedan objekt' : 'Dodaj još jednu lokaciju'}
+            </button>
+          )}
+        </fieldset>
+
+        {/* Zbroj dana */}
+        <div
+          role="status"
+          className={cn(
+            'flex items-start gap-2 text-sm px-3 py-2 rounded-lg border',
+            overLimit ? 'text-amber-900 bg-amber-50 border-amber-200' : 'text-slate-700 bg-slate-50 border-slate-200',
+          )}
+        >
+          {overLimit && <AlertTriangle size={15} className="shrink-0 mt-0.5" aria-hidden="true" />}
+          <p>
+            {fields.length > 1 && <>Ovaj unos: <strong className="tabular-nums">{formatHours(newHours)}</strong>. </>}
+            {alreadyLogged > 0
+              ? <>Već upisano taj dan: <strong className="tabular-nums">{formatHours(alreadyLogged)}</strong> · ukupno <strong className="tabular-nums">{formatHours(projected)}</strong>.</>
+              : <>Ukupno za dan: <strong className="tabular-nums">{formatHours(projected)}</strong>.</>}
+            {overLimit && <> Više od {DAILY_WARN_HOURS} h – provjerite unos.</>}
+          </p>
+        </div>
+
+        <Field label="Napomene" optional hint={fields.length > 1 ? 'Napomena se dodaje svim stavkama.' : undefined}>
           {p => (
             <textarea
               {...p}
@@ -237,7 +369,7 @@ export function WorkLogForm({ editLog, onClose, employeeId }: WorkLogFormProps) 
         <FormActions
           onCancel={onClose}
           isPending={isSubmitting}
-          submitLabel={editLog ? 'Spremi promjene' : 'Dodaj unos'}
+          submitLabel={isEdit ? 'Spremi promjene' : fields.length > 1 ? `Spremi ${fields.length} ${pluralHr(fields.length, 'stavku', 'stavke', 'stavki')}` : 'Dodaj unos'}
           pendingLabel="Spremanje…"
         />
       </form>

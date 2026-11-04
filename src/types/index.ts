@@ -28,4 +28,20 @@ export interface WorkLogFormValues {
   location: string;
   hours_worked: number;
   notes: string;
+  /** Objekt klijenta (null = "Ured / ostalo"; undefined = modul klijenata nije aktivan) */
+  site_id?: string | null;
+  /** Servisirani uređaji (neobavezno) */
+  device_ids?: string[];
+}
+
+export type Client = Tables<'clients'>;
+export type Site = Tables<'sites'>;
+export type Device = Tables<'devices'>;
+export type { DeviceKind } from './database';
+
+export interface SiteWithDevices extends Site {
+  devices: Device[];
+}
+export interface ClientWithSites extends Client {
+  sites: SiteWithDevices[];
 }

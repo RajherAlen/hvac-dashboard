@@ -1,7 +1,8 @@
 import { toast } from 'sonner';
 import { formatNumeric, formatDateTime } from './format-date';
 import { formatHours } from './utils';
-import type { WorkLog, Profile } from '../types';
+import type { WorkLog, Profile, ClientWithSites, WorkLogWithEmployee } from '../types';
+import { DEVICE_KIND_LABEL, siteAddress, CLIENT_KIND_LABEL } from './clients';
 
 // ─── Shared helpers ────────────────────────────────────────────────────────
 
@@ -315,6 +316,73 @@ export function exportMonthPerEmployeePdf(
   </table>
 
   ${employeeSections}
+
+  <p class="generated">Izvješće generirano automatski — HVAC Dashboard</p>
+</body>
+</html>`;
+
+  return openPrintWindow(html);
+}
+
+// ─── 4. Izvješće za klijenta – posjeti, sati i servisirani uređaji ──────────
+
+export function exportClientPdf(
+  client: ClientWithSites,
+  logs: WorkLogWithEmployee[],
+  periodLabel: string,
+  logDevices: Record<string, string[]>,
+): boolean {
+  const totalHours = logs.reduce((s, l) => s + Number(l.hours_worked), 0);
+  const visits = new Set(logs.map(l => l.log_date)).size;
+  const siteById = new Map(client.sites.map(s => [s.id, s]));
+  const deviceById = new Map(client.sites.flatMap(s => s.devices.map(d => [d.id, d] as const)));
+  const deviceName = (id: string) => {
+    const d = deviceById.get(id);
+    if (!d) return '';
+    return [[d.brand, d.model].filter(Boolean).join(' ') || DEVICE_KIND_LABEL[d.kind], d.serial_number ? `(S/N ${d.serial_number})` : '']
+      .filter(Boolean).join(' ');
+  };
+  const multiSite = client.sites.length > 1;
+
+  const html = `<!DOCTYPE html>
+<html lang="hr">
+<head>
+  <meta charset="UTF-8">
+  <title>Izvješće – ${esc(client.name)} – ${esc(periodLabel)}</title>
+  <style>${baseStyles}</style>
+</head>
+<body>
+  <div class="header">
+    <h1>${esc(client.name)}</h1>
+    <p>${esc(CLIENT_KIND_LABEL[client.kind])}${client.oib ? ` · OIB ${esc(client.oib)}` : ''}</p>
+    <p>${client.sites.filter(s => !s.archived_at).map(s => esc(siteAddress(s))).join('<br>')}</p>
+    <p>Period: <strong>${esc(periodLabel)}</strong></p>
+    <p>Generirano: ${formatDateTime(new Date())}</p>
+  </div>
+
+  <div class="summary">
+    <div class="stat"><div class="stat-label">Ukupni sati</div><div class="stat-value">${formatHours(totalHours)}</div></div>
+    <div class="stat"><div class="stat-label">Posjeti</div><div class="stat-value">${visits}</div></div>
+    <div class="stat"><div class="stat-label">Unosi</div><div class="stat-value">${logs.length}</div></div>
+  </div>
+
+  <h2>Obavljeni radovi</h2>
+  ${logs.length === 0 ? '<p class="empty">U ovom periodu nije bilo posjeta.</p>' : `<table>
+    <thead><tr><th>Datum</th>${multiSite ? '<th>Objekt</th>' : ''}<th>Opis</th><th>Uređaji</th><th>Tehničar</th><th>Sati</th></tr></thead>
+    <tbody>
+      ${[...logs].sort((a, b) => a.log_date.localeCompare(b.log_date)).map(l => {
+        const site = l.site_id ? siteById.get(l.site_id) : undefined;
+        return `<tr>
+          <td style="white-space:nowrap">${formatNumeric(l.log_date)}</td>
+          ${multiSite ? `<td>${esc(site ? siteAddress(site) : l.location)}</td>` : ''}
+          <td>${esc(l.task_description)}${l.notes ? `<br><span style="color:#64748b">${esc(l.notes)}</span>` : ''}</td>
+          <td>${(logDevices[l.id] ?? []).map(id => esc(deviceName(id))).join('<br>')}</td>
+          <td>${esc(l.profiles?.full_name ?? '—')}</td>
+          <td class="hours">${formatHours(Number(l.hours_worked))}</td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table>`}
 
   <p class="generated">Izvješće generirano automatski — HVAC Dashboard</p>
 </body>
