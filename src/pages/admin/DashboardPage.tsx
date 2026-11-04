@@ -11,6 +11,11 @@ import { HoursChart } from '../../components/HoursChart';
 import { StaffDayMatrix } from '../../components/StaffDayMatrix';
 import { ViewToggle, PeriodStepper } from '../../components/PeriodNav';
 import { useWorkLogs, useLatestWorkLog } from '../../hooks/useWorkLogs';
+import { usePlan, type PlanAssignment } from '../../hooks/useWorkOrders';
+import { useClientDirectory } from '../../hooks/useClients';
+import { useProfileNames } from '../../hooks/useWorkLogChanges';
+import { KindIcon } from '../../components/orders/KindIcon';
+import { OFFICE_LOCATION } from '../../lib/clients';
 import { useStaffDirectory, type DirectoryEntry } from '../../hooks/useStaffDirectory';
 import { BucketEntriesDialog } from '../../components/BucketEntriesDialog';
 import { LogLocation } from '../../components/clients/LogLocation';
@@ -74,6 +79,9 @@ export function AdminDashboardPage() {
   const { data: latestLog } = useLatestWorkLog();
   const recentFrom = toISODate(addDays(parseISO(today), -10));
   const { data: allRecentLogs = [] } = useWorkLogs({ startDate: recentFrom, endDate: today });
+  // Raspored naloga (null = modul nije uključen → usporedba s normom kao prije)
+  const { data: periodPlan } = usePlan(startDate, endDate);
+  const { data: recentPlan } = usePlan(recentFrom, today);
 
   // Admini ne evidentiraju rad → isključeni iz KPI-ja, grafa, matrice i izvoza.
   // Graf/izvoz: svi zaposlenici (i deaktivirani – njihovi stari sati ostaju u povijesti).
@@ -98,6 +106,25 @@ export function AdminDashboardPage() {
   const normHours    = NORM_PER_DAY * activeStaff.length * normWorkdays;
   const doneHours    = sumHours(periodLogs.filter(l => l.log_date <= normUpTo));
   const normPct      = normHours > 0 ? Math.round((doneHours / normHours) * 100) : null;
+
+  // Plan iz rasporeda: po zaposleniku i danu
+  const planByEmpDay = useMemo(() => {
+    const out: Record<string, Record<string, number>> = {};
+    for (const a of periodPlan ?? []) {
+      (out[a.employee_id] ??= {})[a.day] = (out[a.employee_id]?.[a.day] ?? 0) + Number(a.planned_hours);
+    }
+    return out;
+  }, [periodPlan]);
+  const planMap = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const [emp, byDay] of Object.entries(planByEmpDay)) for (const [d, h] of Object.entries(byDay)) m.set(`${emp}|${d}`, h);
+    return m;
+  }, [planByEmpDay]);
+  const hasPlan = planMap.size > 0;
+  const plannedUpTo = (periodPlan ?? []).filter(a => a.day <= normUpTo).reduce((t, a) => t + Number(a.planned_hours), 0);
+  // Uspoređuju se samo osobe i dani koji su imali plan (rad bez naloga ne napuhuje postotak)
+  const doneOnPlan = sumHours(periodLogs.filter(l => l.log_date <= normUpTo && planMap.has(`${l.employee_id}|${l.log_date}`)));
+  const planPct = plannedUpTo > 0 ? Math.round((doneOnPlan / plannedUpTo) * 100) : null;
 
   const prevHours   = sumHours(prevLogs);
   const cmpLogs     = prev.inProgress ? periodLogs.filter(l => l.log_date <= prev.currentEnd) : periodLogs;
@@ -158,6 +185,18 @@ export function AdminDashboardPage() {
           delta={delta(cmpHours, prevHours)}
           isLoading={isLoading}
         />
+        {hasPlan ? (
+          <StatCard
+            title="Ostvarenje plana"
+            value={planPct === null ? '—' : `${planPct} %`}
+            subtitle={planPct === null
+              ? 'Planirani dani još nisu prošli'
+              : `${formatHours(doneOnPlan)} / ${formatHours(plannedUpTo)} planirano${endDate < today ? '' : ', do jučer'}`}
+            icon={Gauge}
+            isLoading={isLoading}
+            footer={planPct !== null ? <NormBar pct={planPct} /> : null}
+          />
+        ) : (
         <StatCard
           title="Popunjenost norme"
           value={normPct === null ? '—' : `${normPct} %`}
@@ -168,6 +207,7 @@ export function AdminDashboardPage() {
           isLoading={isLoading || employeesLoading}
           footer={normPct !== null ? <NormBar pct={normPct} /> : null}
         />
+        )}
         <StatCard
           title="Aktivni danas"
           value={`${activeToday} / ${activeStaff.length}`}
@@ -195,6 +235,7 @@ export function AdminDashboardPage() {
         title="Sati po danu"
         onBucketClick={bucket => setOpenBucket({ bucket })}
         normPerPerson={NORM_PER_DAY}
+        planByEmpDay={hasPlan ? planByEmpDay : undefined}
         normStaffIds={activeIds}
         legendToggle
         height={280}
@@ -221,6 +262,7 @@ export function AdminDashboardPage() {
               today={today}
               colors={colors}
               normPerDay={NORM_PER_DAY}
+              plan={hasPlan ? planMap : undefined}
               employeeHref={employeeHref}
               onCellClick={(employeeId, day) => setOpenBucket({ bucket: { key: day, label: day, days: [day] }, employeeId })}
             />
@@ -232,6 +274,8 @@ export function AdminDashboardPage() {
           loading={todayLoading || employeesLoading}
           latestLog={latestLog ?? null}
           missing={missingPrev}
+          todayPlan={(recentPlan ?? []).filter(a => a.day === today)}
+          prevPlan={(recentPlan ?? []).filter(a => a.day === prevDay)}
           prevDay={prevDay}
           staffCount={activeStaff.length}
           recentLogs={recentLogs}
@@ -268,7 +312,9 @@ function NormBar({ pct }: { pct: number }) {
 
 // ─── Danas: aktivnost i tko još nije upisao ─────────────────────────────────
 
-function TodayPanel({ todayLogs, loading, latestLog, missing, prevDay, staffCount, recentLogs, today, colors, employeeHref }: {
+function TodayPanel({ todayLogs, loading, latestLog, missing, prevDay, staffCount, recentLogs, today, colors, employeeHref, todayPlan, prevPlan }: {
+  todayPlan: PlanAssignment[];
+  prevPlan: PlanAssignment[];
   todayLogs: WorkLogWithEmployee[];
   loading: boolean;
   latestLog: WorkLogWithEmployee | null;
@@ -286,6 +332,12 @@ function TodayPanel({ todayLogs, loading, latestLog, missing, prevDay, staffCoun
   for (let d = parseISO(today); stripDays.length < 5; d = addDays(d, -1)) {
     if (!isWeekend(d)) stripDays.unshift(toISODate(d));
   }
+  const dir = useClientDirectory();
+  const placeOf = (siteId: string | null) => (siteId ? dir.siteIndex.get(siteId)?.client.name ?? 'Objekt' : OFFICE_LOCATION);
+  const loggedAsg = new Set(recentLogs.map(l => l.assignment_id).filter(Boolean) as string[]);
+  const planByEmp = new Map<string, PlanAssignment[]>();
+  for (const a of todayPlan) { if (!planByEmp.has(a.employee_id)) planByEmp.set(a.employee_id, []); planByEmp.get(a.employee_id)!.push(a); }
+  const names = useProfileNames();
   const hoursOn = (emp: string, day: string) =>
     recentLogs.filter(l => l.employee_id === emp && l.log_date === day).reduce((t, l) => t + Number(l.hours_worked), 0);
 
@@ -302,7 +354,35 @@ function TodayPanel({ todayLogs, loading, latestLog, missing, prevDay, staffCoun
         </div>
       ) : (
         <>
-          {todayLogs.length === 0 ? (
+          {todayPlan.length > 0 && (
+            <div className="border-t border-slate-100 pt-3 pb-1">
+              <h3 className="px-4 sm:px-5 pb-1.5 text-sm font-semibold text-slate-800">Plan za danas</h3>
+              <ul>
+                {[...planByEmp.entries()].map(([emp, items]) => (
+                  <li key={emp} className="px-4 sm:px-5 py-1.5">
+                    <p className="flex items-center gap-2 text-sm font-medium text-slate-800">
+                      <PersonDot color={colors[emp]} />
+                      <Link to={employeeHref(emp)} className="hover:text-blue-700 hover:underline truncate">{names.get(emp)?.name ?? 'Tehničar'}</Link>
+                    </p>
+                    <ul className="ml-[18px] mt-0.5 space-y-0.5">
+                      {items.map(a => {
+                        const done = !!a.done_at || loggedAsg.has(a.id);
+                        return (
+                          <li key={a.id} className="flex items-center gap-1.5 text-xs text-slate-700">
+                            <KindIcon kind={a.work_orders.kind} size={12} className="text-slate-500 shrink-0" />
+                            <span className="truncate flex-1">{placeOf(a.work_orders.site_id)}, {a.work_orders.title.toLowerCase()} {formatHours(Number(a.planned_hours))}</span>
+                            <span className={cn('shrink-0 font-medium', done ? 'text-emerald-800' : 'text-slate-500')}>{done ? 'upisano' : 'čeka'}</span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {todayLogs.length === 0 && todayPlan.length > 0 ? null : todayLogs.length === 0 ? (
             <div className="mx-4 sm:mx-5 mb-4 flex items-start gap-3 bg-slate-50 rounded-lg px-3 py-3">
               <Inbox size={16} className="text-slate-500 mt-0.5 shrink-0" aria-hidden="true" />
               <div className="min-w-0">
@@ -369,7 +449,11 @@ function TodayPanel({ todayLogs, loading, latestLog, missing, prevDay, staffCoun
                               <span className={cn('block text-xs', gap >= 2 ? 'text-red-700' : 'text-slate-600')}>
                                 {gap >= 2
                                   ? `Bez unosa ${gap} ${pluralHr(gap, 'radni dan', 'radna dana', 'radnih dana')} zaredom`
-                                  : e.lastLogDate ? `Zadnji unos ${formatRelative(e.lastLogDate)}` : 'Još nema nijedan unos'}
+                                  : (() => {
+                                    const open = prevPlan.filter(a => a.employee_id === e.emp.id && !a.done_at && !loggedAsg.has(a.id));
+                                    if (open.length) return `Nalog ${placeOf(open[0].work_orders.site_id)} bez unosa${open.length > 1 ? ` (+${open.length - 1})` : ''}`;
+                                    return e.lastLogDate ? `Zadnji unos ${formatRelative(e.lastLogDate)}` : 'Još nema nijedan unos';
+                                  })()}
                               </span>
                             </span>
                             <DayStrip days={stripDays} hours={hours} today={today} />

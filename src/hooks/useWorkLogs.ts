@@ -148,6 +148,7 @@ export function useAddWorkLog() {
       client.invalidateQueries({ queryKey: [QUERY_KEY] });
       client.invalidateQueries({ queryKey: [CHANGES_KEY] });
       client.invalidateQueries({ queryKey: ['service_cases'] });
+      client.invalidateQueries({ queryKey: ['work_orders'] });
     },
   });
 }
@@ -170,6 +171,8 @@ export function useAddWorkLogs() {
             notes: r.notes || null,
             device_ids: r.device_ids ?? [],
             is_service: r.is_service ?? true,
+            assignment_id: r.assignment_id ?? null,
+            order_done: r.order_done ?? false,
           })),
         });
         if (error) throw error;
@@ -191,6 +194,7 @@ export function useAddWorkLogs() {
       client.invalidateQueries({ queryKey: [QUERY_KEY] });
       client.invalidateQueries({ queryKey: [CHANGES_KEY] });
       client.invalidateQueries({ queryKey: ['service_cases'] });
+      client.invalidateQueries({ queryKey: ['work_orders'] });
     },
   });
 }
@@ -247,6 +251,7 @@ export function useUpdateWorkLog() {
       client.invalidateQueries({ queryKey: [QUERY_KEY] });
       client.invalidateQueries({ queryKey: [CHANGES_KEY] });
       client.invalidateQueries({ queryKey: ['service_cases'] });
+      client.invalidateQueries({ queryKey: ['work_orders'] });
     },
   });
 }
@@ -262,6 +267,7 @@ export function useDeleteWorkLog() {
       client.invalidateQueries({ queryKey: [QUERY_KEY] });
       client.invalidateQueries({ queryKey: [CHANGES_KEY] });
       client.invalidateQueries({ queryKey: ['service_cases'] });
+      client.invalidateQueries({ queryKey: ['work_orders'] });
     },
   });
 }

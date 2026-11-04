@@ -43,6 +43,10 @@ const itemSchema = z.object({
   site: z.string(),
   device_ids: z.array(z.string()),
   is_service: z.boolean(),
+  /** Unos iz naloga (prazno = običan unos) */
+  assignment_id: z.string(),
+  order_done: z.boolean(),
+  order_label: z.string(),
   location: z.string(),
   task_description: z.string().trim().min(3, 'Opišite posao (najmanje 3 znaka)'),
   hours: hoursSchema,
@@ -64,7 +68,23 @@ function makeSchema(clientsMode: boolean, legacyEdit: boolean) {
   });
 }
 
-const EMPTY_ITEM = { site: '', device_ids: [] as string[], is_service: true, location: '', task_description: '', hours: '' };
+const EMPTY_ITEM = {
+  site: '', device_ids: [] as string[], is_service: true,
+  assignment_id: '', order_done: false, order_label: '',
+  location: '', task_description: '', hours: '',
+};
+
+/** Stavka unaprijed popunjena iz naloga ("Upiši rad" / "Upiši cijeli dan") */
+export interface PresetItem {
+  site: string;
+  device_ids: string[];
+  task: string;
+  hours: number;
+  is_service: boolean;
+  assignment_id: string;
+  order_done: boolean;
+  label: string;
+}
 
 interface WorkLogFormProps {
   editLog?: WorkLog | null;
@@ -76,9 +96,12 @@ interface WorkLogFormProps {
   /** Unaprijed odabrani uređaji i opis (npr. "Upiši servis" iz nadolazećih servisa) */
   presetDeviceIds?: string[];
   presetTask?: string;
+  presetItems?: PresetItem[];
+  /** Datum unosa (npr. neupisani nalog od jučer) */
+  presetDate?: string;
 }
 
-export function WorkLogForm({ editLog, onClose, employeeId, presetSiteId, presetDeviceIds, presetTask }: WorkLogFormProps) {
+export function WorkLogForm({ editLog, onClose, employeeId, presetSiteId, presetDeviceIds, presetTask, presetItems, presetDate }: WorkLogFormProps) {
   const { user } = useAuth();
   const addLogs = useAddWorkLogs();
   const updateLog = useUpdateWorkLog();
@@ -101,7 +124,16 @@ export function WorkLogForm({ editLog, onClose, employeeId, presetSiteId, preset
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     mode: 'onTouched',
-    defaultValues: { log_date: todayISO(), items: [{ ...EMPTY_ITEM, site: presetSiteId ?? '', device_ids: presetDeviceIds ?? [], task_description: presetTask ?? '', hours: presetTask ? '' : '8' }], notes: '' },
+    defaultValues: {
+      log_date: presetDate ?? todayISO(),
+      items: presetItems?.length
+        ? presetItems.map(p => ({
+          ...EMPTY_ITEM, site: p.site, device_ids: p.device_ids, task_description: p.task, hours: hoursToInput(p.hours),
+          is_service: p.is_service, assignment_id: p.assignment_id, order_done: p.order_done, order_label: p.label,
+        }))
+        : [{ ...EMPTY_ITEM, site: presetSiteId ?? '', device_ids: presetDeviceIds ?? [], task_description: presetTask ?? '', hours: presetTask ? '' : '8' }],
+      notes: '',
+    },
   });
   const { fields, append, remove } = useFieldArray({ control, name: 'items' });
 
@@ -113,6 +145,7 @@ export function WorkLogForm({ editLog, onClose, employeeId, presetSiteId, preset
           site: editLog.site_id ?? (editLog.location === OFFICE_LOCATION ? OFFICE_SITE : ''),
           device_ids: editDevices?.[editLog.id] ?? [],
           is_service: editIsService ?? true,
+          assignment_id: '', order_done: false, order_label: '',
           location: editLog.location,
           task_description: editLog.task_description,
           hours: hoursToInput(Number(editLog.hours_worked)),
@@ -130,9 +163,11 @@ export function WorkLogForm({ editLog, onClose, employeeId, presetSiteId, preset
   const projected = alreadyLogged + newHours;
   const overLimit = projected > DAILY_WARN_HOURS;
 
+  const fromOrder = (it: FormValues['items'][number]) =>
+    it.assignment_id ? { assignment_id: it.assignment_id, order_done: it.order_done } : {};
   const resolve = (it: FormValues['items'][number]) => {
     if (!clientsMode) return { location: it.location.trim().replace(/\s+/g, ' ') };
-    if (it.site === OFFICE_SITE) return { location: OFFICE_LOCATION, site_id: null, device_ids: [] };
+    if (it.site === OFFICE_SITE) return { location: OFFICE_LOCATION, site_id: null, device_ids: [], ...fromOrder(it) };
     if (!it.site) return { location: it.location }; // stari unos ostaje nepovezan
     const hit = dir.siteIndex.get(it.site);
     return {
@@ -140,6 +175,7 @@ export function WorkLogForm({ editLog, onClose, employeeId, presetSiteId, preset
       site_id: it.site,
       device_ids: it.device_ids,
       ...(it.device_ids.length > 0 ? { is_service: it.is_service } : {}),
+      ...fromOrder(it),
     };
   };
 
@@ -220,6 +256,16 @@ export function WorkLogForm({ editLog, onClose, employeeId, presetSiteId, preset
                     >
                       <X size={15} aria-hidden="true" />
                     </button>
+                  </div>
+                )}
+
+                {item?.assignment_id && (
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs bg-white border border-blue-200 rounded-lg px-2.5 py-2">
+                    <span className="text-slate-700">Iz naloga: <strong className="font-semibold text-slate-900">{item.order_label}</strong></span>
+                    <label className="inline-flex items-center gap-2 text-sm text-slate-800 cursor-pointer">
+                      <input type="checkbox" {...register(`items.${i}.order_done`)} className="h-5 w-5 sm:h-4 sm:w-4 rounded border-slate-400 accent-blue-600" />
+                      Nalog je završen
+                    </label>
                   </div>
                 )}
 

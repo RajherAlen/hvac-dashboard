@@ -1,8 +1,9 @@
 import { useMemo, useId, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  BarChart,
+  ComposedChart,
   Bar,
+  Line,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -39,6 +40,8 @@ interface HoursChartProps {
   legendToggle?: boolean;
   height?: number;
   maxBarSize?: number;
+  /** Planirani sati po zaposleniku i danu (raspored naloga) – crta liniju plana umjesto norme. */
+  planByEmpDay?: Record<string, Record<string, number>>;
 }
 
 type Row = {
@@ -52,6 +55,8 @@ type Row = {
   future: number;
   /** Placeholder za današnji dan bez unosa ("u tijeku"). */
   now: number;
+  /** Planirani sati vidljivih zaposlenika (null = nema plana za taj dan) */
+  plan: number | null;
   /** Zadnji (najviši) segment u stogu s vrijednošću > 0 – nosi oznaku zbroja. */
   topSeries: string | null;
   [employeeId: string]: unknown;
@@ -103,6 +108,7 @@ export function HoursChart({
   legendToggle = false,
   height = 240,
   maxBarSize = 40,
+  planByEmpDay,
 }: HoursChartProps) {
   const titleId = useId();
   const [hidden, setHidden] = useState<Set<string>>(() => new Set());
@@ -118,7 +124,7 @@ export function HoursChart({
 
   const colors = useMemo(() => employeeColorMap(employees), [employees]);
 
-  const { rows, series, visible, ticks, hasFuture, hasNow, norm } = useMemo(() => {
+  const { rows, series, visible, ticks, hasFuture, hasNow, norm, hasPlan } = useMemo(() => {
     const buckets: Bucket[] = groupBy === 'week'
       ? isoWeekBuckets(days)
       : days.map(d => ({ key: d, label: d, days: [d] }));
@@ -145,8 +151,14 @@ export function HoursChart({
         isWeekend: groupBy === 'day' && !isWorkday(b.days[0]),
         future: 0,
         now: 0,
+        plan: null,
         topSeries: null,
       };
+      if (planByEmpDay && groupBy === 'day') {
+        const ids = isStacked ? visible.map(e => e.id) : Object.keys(planByEmpDay);
+        const p = ids.reduce((sum, id) => sum + (planByEmpDay[id]?.[b.days[0]] ?? 0), 0);
+        row.plan = p > 0 ? p : null;
+      }
       for (const emp of visible) {
         const v = bucketLogs.filter(l => l.employee_id === emp.id).reduce((s, l) => s + Number(l.hours_worked), 0);
         row[emp.id] = v;
@@ -155,19 +167,22 @@ export function HoursChart({
       return row;
     });
 
-    const ticks = niceTicks(Math.max(0, norm * 1.1, ...base.map(r => r.total)));
+    const hasPlan = base.some(r => r.plan !== null);
+    // S rasporedom naloga cilj je plan, a ne fiksna norma
+    const target = hasPlan ? 0 : norm;
+    const ticks = niceTicks(Math.max(0, target * 1.1, ...base.map(r => Math.max(r.total, (r.plan ?? 0) * 1.05))));
     const top = ticks[ticks.length - 1];
     for (const r of base) {
       if (r.isFuture) r.future = top;
-      if (r.isToday && r.total === 0) r.now = norm > 0 ? norm : top * 0.85;
+      if (r.isToday && r.total === 0) r.now = r.plan ?? (target > 0 ? target : top * 0.85);
     }
 
     return {
-      rows: base, series, visible, ticks, norm,
+      rows: base, series, visible, ticks, norm: target, hasPlan,
       hasFuture: base.some(r => r.isFuture),
       hasNow: base.some(r => r.now > 0),
     };
-  }, [days, groupBy, logs, employees, isStacked, today, hidden, normPerPerson, normStaffIds]);
+  }, [days, groupBy, logs, employees, isStacked, today, hidden, normPerPerson, normStaffIds, planByEmpDay]);
 
   const many = rows.length > 10;
   const total = rows.reduce((s, r) => s + r.total, 0);
@@ -196,7 +211,7 @@ export function HoursChart({
 
       <div role="img" aria-label={summary} className="-ml-2">
         <ResponsiveContainer width="100%" height={height}>
-          <BarChart
+          <ComposedChart
             data={rows}
             margin={{ top: isStacked ? 18 : 8, right: 4, left: 0, bottom: 0 }}
             barCategoryGap={many ? '15%' : '25%'}
@@ -284,7 +299,8 @@ export function HoursChart({
                       const total = Number(p.value);
                       const x = Number(p.x) + Number(p.width) / 2;
                       const row = rows[Number(p.index)];
-                      const under = norm > 0 && total < norm && !!row && !row.isToday && !row.isWeekend && !row.isFuture;
+                      const goal = row?.plan ?? (row?.isWeekend ? 0 : norm);
+                      const under = goal > 0 && total < goal && !!row && !row.isToday && !row.isFuture;
                       return (
                         <text x={x} y={Number(p.y) - 5} textAnchor="middle" fontSize={many ? 9 : 11} fontWeight={600} fill={under ? NORM_INK : AXIS_INK}>
                           {many ? formatAxisHours(total) : formatHours(total)}
@@ -312,12 +328,27 @@ export function HoursChart({
             <Bar dataKey={FUTURE_KEY} stackId="a" maxBarSize={maxBarSize} isAnimationActive={false} legendType="none">
               {rows.map(r => <Cell key={r.key} fill={`url(#${titleId}-hatch${r.isWeekend ? '-wk' : ''})`} />)}
             </Bar>
-          </BarChart>
+            {hasPlan && (
+              <Line
+                dataKey="plan"
+                name="Plan"
+                type="linear"
+                stroke="#0f172a"
+                strokeWidth={1.5}
+                strokeDasharray="5 4"
+                connectNulls={false}
+                dot={{ r: 3.5, fill: '#fff', stroke: '#0f172a', strokeWidth: 1.5 }}
+                activeDot={false}
+                isAnimationActive={false}
+                legendType="none"
+              />
+            )}
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
 
       {/* Legenda: samo zaposlenici koji imaju sate u periodu */}
-      {(isStacked || hasFuture || norm > 0) && (
+      {(isStacked || hasFuture || norm > 0 || hasPlan) && (
         <ul className="flex flex-wrap gap-x-4 gap-y-1.5 mt-3 text-xs text-slate-600" aria-label="Legenda">
           {series.map(emp => (
             <li key={emp.id}>
@@ -350,6 +381,12 @@ export function HoursChart({
             </li>
           ))}
           {isStacked && series.length === 0 && <li className="text-slate-500">Nema evidentiranih sati u periodu.</li>}
+          {hasPlan && (
+            <li className="flex items-center gap-1.5 text-slate-600">
+              <svg width="22" height="10" aria-hidden="true"><line x1="0" y1="5" x2="22" y2="5" stroke="#0f172a" strokeWidth="1.5" strokeDasharray="4 3" /><circle cx="11" cy="5" r="3" fill="#fff" stroke="#0f172a" strokeWidth="1.5" /></svg>
+              Plan iz rasporeda
+            </li>
+          )}
           {norm > 0 && (
             <li className="flex items-center gap-1.5 text-slate-600">
               <svg width="18" height="8" aria-hidden="true"><line x1="0" y1="4" x2="18" y2="4" stroke={NORM_COLOR} strokeWidth="1.5" strokeDasharray="4 3" /></svg>
@@ -380,6 +417,7 @@ export function HoursChart({
             <th scope="col">{groupBy === 'day' ? 'Dan' : 'Tjedan'}</th>
             {visible.map(e => <th key={e.id} scope="col">{e.full_name}</th>)}
             <th scope="col">Ukupno</th>
+            {hasPlan && <th scope="col">Plan</th>}
           </tr>
         </thead>
         <tbody>
@@ -388,6 +426,7 @@ export function HoursChart({
               <th scope="row">{bucketTitle(r.bucket, groupBy)}</th>
               {visible.map(e => <td key={e.id}>{formatHours(Number(r[e.id] ?? 0))}</td>)}
               <td>{r.isFuture ? 'još nije prošlo' : r.isToday && r.total === 0 ? 'u tijeku' : formatHours(r.total)}</td>
+              {hasPlan && <td>{r.plan !== null ? formatHours(r.plan) : '—'}</td>}
             </tr>
           ))}
         </tbody>
@@ -448,7 +487,7 @@ function ChartTooltip({
       {row.isFuture ? (
         <p className="text-slate-500">Još nije prošlo</p>
       ) : row.isToday && row.total === 0 ? (
-        <p className="text-slate-600">Dan u tijeku · još nema unosa</p>
+        <p className="text-slate-600">Dan u tijeku · još nema unosa{row.plan !== null ? ` · plan ${formatHours(row.plan)}` : ''}</p>
       ) : (
         <>
           {series.length > 0 && (
@@ -471,7 +510,9 @@ function ChartTooltip({
             <span>Ukupno</span>
             <span className="tabular-nums">
               {formatHours(row.total)}
-              {norm > 0 && !row.isWeekend && <span className="font-normal text-slate-500"> / {formatHours(norm)}</span>}
+              {row.plan !== null
+                ? <span className="font-normal text-slate-500"> / plan {formatHours(row.plan)}</span>
+                : norm > 0 && !row.isWeekend && <span className="font-normal text-slate-500"> / {formatHours(norm)}</span>}
             </span>
           </p>
         </>
