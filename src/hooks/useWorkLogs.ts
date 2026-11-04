@@ -27,6 +27,101 @@ export function useWorkLogs(filters: WorkLogFilters = {}) {
   });
 }
 
+/** Zadnji evidentirani unos (bilo kojeg zaposlenika) – za prazno stanje "Današnja aktivnost". */
+export function useLatestWorkLog() {
+  return useQuery({
+    queryKey: [QUERY_KEY, 'latest'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('work_logs')
+        .select('*, profiles(id, full_name, role)')
+        .order('log_date', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
+/**
+ * Prijedlozi lokacija iz prethodnih unosa – jedinstveni bez obzira na velika/mala slova
+ * i razmake, sortirani po učestalosti. Zadržava se najnoviji zapis svake lokacije.
+ */
+export function useLocationSuggestions() {
+  return useQuery({
+    queryKey: [QUERY_KEY, 'locations'],
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('work_logs')
+        .select('location')
+        .order('created_at', { ascending: false })
+        .limit(500);
+      if (error) throw error;
+      const byKey = new Map<string, { label: string; count: number }>();
+      for (const { location } of data ?? []) {
+        const label = location.trim().replace(/\s+/g, ' ');
+        if (!label) continue;
+        const key = label.toLocaleLowerCase('hr');
+        const hit = byKey.get(key);
+        if (hit) hit.count++;
+        else byKey.set(key, { label, count: 1 });
+      }
+      return [...byKey.values()].sort((a, b) => b.count - a.count).map(v => v.label);
+    },
+  });
+}
+
+/**
+ * Datum zadnjeg unosa po zaposleniku (neovisno o periodu).
+ * Jedan `limit(1)` upit po zaposleniku – tvrtka ima malo zaposlenika, a izbjegavamo
+ * da stariji unosi "nestanu" zbog limita redova na velikom upitu.
+ */
+export function useLastLogDates(employeeIds: string[]) {
+  const ids = [...employeeIds].sort();
+  return useQuery({
+    queryKey: [QUERY_KEY, 'last-dates', ids],
+    enabled: ids.length > 0,
+    queryFn: async () => {
+      const results = await Promise.all(
+        ids.map(id =>
+          supabase
+            .from('work_logs')
+            .select('log_date')
+            .eq('employee_id', id)
+            .order('log_date', { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+        ),
+      );
+      const out: Record<string, string | null> = {};
+      results.forEach((r, i) => {
+        if (r.error) throw r.error;
+        out[ids[i]] = r.data?.log_date ?? null;
+      });
+      return out;
+    },
+  });
+}
+
+/** Ukupan broj unosa zaposlenika – za potvrdu brisanja. */
+export function useWorkLogCount(employeeId: string | undefined) {
+  return useQuery({
+    queryKey: [QUERY_KEY, 'count', employeeId],
+    enabled: !!employeeId,
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from('work_logs')
+        .select('id', { count: 'exact', head: true })
+        .eq('employee_id', employeeId!);
+      if (error) throw error;
+      return count ?? 0;
+    },
+  });
+}
+
 export function useAddWorkLog() {
   const client = useQueryClient();
   return useMutation({

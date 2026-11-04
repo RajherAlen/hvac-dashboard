@@ -1,21 +1,34 @@
-import { format, parseISO } from 'date-fns';
+import { toast } from 'sonner';
+import { formatNumeric, formatDateTime } from './format-date';
 import { formatHours } from './utils';
 import type { WorkLog, Profile } from '../types';
 
 // ─── Shared helpers ────────────────────────────────────────────────────────
 
-function openPrintWindow(html: string) {
+/** HTML escaping – vrijednosti iz baze (opis, lokacija, ime) ne smiju se ubaciti kao markup. */
+function esc(v: unknown): string {
+  return String(v ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/** Vraća false ako je preglednik blokirao skočni prozor. */
+function openPrintWindow(html: string): boolean {
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const win = window.open(url, '_blank');
   // Auto-print on desktop after content loads; mobile users print via browser menu
   if (win) {
     setTimeout(() => {
-      try { win.print(); } catch (_) { /* silent on mobile */ }
+      try { win.print(); } catch { /* silent on mobile */ }
     }, 800);
   }
   // Revoke blob URL after enough time for the window to have loaded
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  return !!win;
 }
 
 const baseStyles = `
@@ -45,7 +58,7 @@ export function exportDashboardPdf(
   logs: WorkLog[],
   employees: Profile[],
   periodLabel: string
-) {
+): boolean {
   const totalHours = logs.reduce((s, l) => s + Number(l.hours_worked), 0);
 
   const empRows = employees
@@ -59,14 +72,14 @@ export function exportDashboardPdf(
 <html lang="hr">
 <head>
   <meta charset="UTF-8">
-  <title>HVAC Izvješće — ${periodLabel}</title>
+  <title>HVAC Izvješće — ${esc(periodLabel)}</title>
   <style>${baseStyles}</style>
 </head>
 <body>
   <div class="header">
     <h1>HVAC Dashboard — Izvješće</h1>
-    <p>Period: <strong>${periodLabel}</strong></p>
-    <p>Generirano: ${format(new Date(), 'dd.MM.yyyy HH:mm')}</p>
+    <p>Period: <strong>${esc(periodLabel)}</strong></p>
+    <p>Generirano: ${formatDateTime(new Date())}</p>
   </div>
 
   <div class="summary">
@@ -93,8 +106,8 @@ export function exportDashboardPdf(
     </thead>
     <tbody>
       ${empRows.map(({ emp, empLogs, hours }) => `<tr>
-        <td>${emp.full_name}</td>
-        <td>${emp.email}</td>
+        <td>${esc(emp.full_name)}</td>
+        <td>${esc(emp.email)}</td>
         <td class="hours">${formatHours(hours)}</td>
         <td>${empLogs.length}</td>
       </tr>`).join('')}
@@ -112,11 +125,11 @@ export function exportDashboardPdf(
       ${logs.map(log => {
         const emp = (log as Record<string, unknown> & { profiles?: { full_name?: string } }).profiles;
         return `<tr>
-          <td style="white-space:nowrap">${format(parseISO(log.log_date), 'dd.MM.yyyy')}</td>
-          <td>${emp?.full_name ?? '—'}</td>
-          <td>${log.task_description}</td>
-          <td>${log.location}</td>
-          <td style="color:#64748b">${log.notes ?? ''}</td>
+          <td style="white-space:nowrap">${formatNumeric(log.log_date)}</td>
+          <td>${esc(emp?.full_name ?? '—')}</td>
+          <td>${esc(log.task_description)}</td>
+          <td>${esc(log.location)}</td>
+          <td style="color:#64748b">${esc(log.notes ?? '')}</td>
           <td class="hours">${formatHours(Number(log.hours_worked))}</td>
         </tr>`;
       }).join('')}
@@ -127,7 +140,7 @@ export function exportDashboardPdf(
 </body>
 </html>`;
 
-  openPrintWindow(html);
+  return openPrintWindow(html);
 }
 
 // ─── 2. Single employee — selected period ──────────────────────────────────
@@ -136,7 +149,7 @@ export function exportEmployeePdf(
   logs: WorkLog[],
   employee: Profile,
   periodLabel: string
-) {
+): boolean {
   const empLogs = logs.filter(l => l.employee_id === employee.id);
   const totalHours = empLogs.reduce((s, l) => s + Number(l.hours_worked), 0);
 
@@ -144,16 +157,16 @@ export function exportEmployeePdf(
 <html lang="hr">
 <head>
   <meta charset="UTF-8">
-  <title>HVAC Izvješće — ${employee.full_name} — ${periodLabel}</title>
+  <title>HVAC Izvješće — ${esc(employee.full_name)} — ${esc(periodLabel)}</title>
   <style>${baseStyles}</style>
 </head>
 <body>
   <div class="header">
     <h1>HVAC Dashboard — Izvješće zaposlenika</h1>
-    <p>Zaposlenik: <strong>${employee.full_name}</strong></p>
-    <p>E-mail: ${employee.email}</p>
-    <p>Period: <strong>${periodLabel}</strong></p>
-    <p>Generirano: ${format(new Date(), 'dd.MM.yyyy HH:mm')}</p>
+    <p>Zaposlenik: <strong>${esc(employee.full_name)}</strong></p>
+    <p>E-mail: ${esc(employee.email)}</p>
+    <p>Period: <strong>${esc(periodLabel)}</strong></p>
+    <p>Generirano: ${formatDateTime(new Date())}</p>
   </div>
 
   <div class="summary">
@@ -178,10 +191,10 @@ export function exportEmployeePdf(
     </thead>
     <tbody>
       ${empLogs.map(log => `<tr>
-        <td style="white-space:nowrap">${format(parseISO(log.log_date), 'dd.MM.yyyy')}</td>
-        <td>${log.task_description}</td>
-        <td>${log.location}</td>
-        <td style="color:#64748b">${log.notes ?? ''}</td>
+        <td style="white-space:nowrap">${formatNumeric(log.log_date)}</td>
+        <td>${esc(log.task_description)}</td>
+        <td>${esc(log.location)}</td>
+        <td style="color:#64748b">${esc(log.notes ?? '')}</td>
         <td class="hours">${formatHours(Number(log.hours_worked))}</td>
       </tr>`).join('')}
     </tbody>
@@ -191,7 +204,7 @@ export function exportEmployeePdf(
 </body>
 </html>`;
 
-  openPrintWindow(html);
+  return openPrintWindow(html);
 }
 
 // ─── 3. Per-employee sections — full month (page break between employees) ──
@@ -200,7 +213,7 @@ export function exportMonthPerEmployeePdf(
   logs: WorkLog[],
   employees: Profile[],
   monthLabel: string
-) {
+): boolean {
   const totalHours = logs.reduce((s, l) => s + Number(l.hours_worked), 0);
   const activeEmployees = employees.filter(emp => logs.some(l => l.employee_id === emp.id));
 
@@ -210,9 +223,9 @@ export function exportMonthPerEmployeePdf(
 
     return `<div class="${idx === 0 ? 'first-section' : 'emp-section'}">
       <div class="header">
-        <h1>${emp.full_name}</h1>
-        <p>E-mail: ${emp.email}</p>
-        <p>Period: <strong>${monthLabel}</strong></p>
+        <h1>${esc(emp.full_name)}</h1>
+        <p>E-mail: ${esc(emp.email)}</p>
+        <p>Period: <strong>${esc(monthLabel)}</strong></p>
       </div>
       <div class="summary">
         <div class="stat">
@@ -235,10 +248,10 @@ export function exportMonthPerEmployeePdf(
         </thead>
         <tbody>
           ${empLogs.map(log => `<tr>
-            <td style="white-space:nowrap">${format(parseISO(log.log_date), 'dd.MM.yyyy')}</td>
-            <td>${log.task_description}</td>
-            <td>${log.location}</td>
-            <td style="color:#64748b">${log.notes ?? ''}</td>
+            <td style="white-space:nowrap">${formatNumeric(log.log_date)}</td>
+            <td>${esc(log.task_description)}</td>
+            <td>${esc(log.location)}</td>
+            <td style="color:#64748b">${esc(log.notes ?? '')}</td>
             <td class="hours">${formatHours(Number(log.hours_worked))}</td>
           </tr>`).join('')}
         </tbody>
@@ -250,7 +263,7 @@ export function exportMonthPerEmployeePdf(
 <html lang="hr">
 <head>
   <meta charset="UTF-8">
-  <title>HVAC Izvješće po zaposlenicima — ${monthLabel}</title>
+  <title>HVAC Izvješće po zaposlenicima — ${esc(monthLabel)}</title>
   <style>
     ${baseStyles}
     .emp-section { page-break-before: always; break-before: page; padding-top: 32px; }
@@ -261,8 +274,8 @@ export function exportMonthPerEmployeePdf(
   <!-- Cover summary -->
   <div class="header">
     <h1>HVAC Dashboard — Mjesečno izvješće po zaposlenicima</h1>
-    <p>Period: <strong>${monthLabel}</strong></p>
-    <p>Generirano: ${format(new Date(), 'dd.MM.yyyy HH:mm')}</p>
+    <p>Period: <strong>${esc(monthLabel)}</strong></p>
+    <p>Generirano: ${formatDateTime(new Date())}</p>
   </div>
 
   <div class="summary">
@@ -292,8 +305,8 @@ export function exportMonthPerEmployeePdf(
         const empLogs = logs.filter(l => l.employee_id === emp.id);
         const empHours = empLogs.reduce((s, l) => s + Number(l.hours_worked), 0);
         return `<tr>
-          <td>${emp.full_name}</td>
-          <td>${emp.email}</td>
+          <td>${esc(emp.full_name)}</td>
+          <td>${esc(emp.email)}</td>
           <td class="hours">${formatHours(empHours)}</td>
           <td>${empLogs.length}</td>
         </tr>`;
@@ -307,5 +320,19 @@ export function exportMonthPerEmployeePdf(
 </body>
 </html>`;
 
-  openPrintWindow(html);
+  return openPrintWindow(html);
+}
+
+// ─── Povratna informacija korisniku ─────────────────────────────────────────
+
+export function reportExport(ok: boolean) {
+  if (ok) {
+    toast.success('Izvješće otvoreno u novoj kartici', {
+      description: 'U dijalogu za ispis odaberite "Spremi kao PDF".',
+    });
+  } else {
+    toast.error('Preglednik je blokirao skočni prozor', {
+      description: 'Dopustite skočne prozore za ovu stranicu pa pokušajte ponovno.',
+    });
+  }
 }

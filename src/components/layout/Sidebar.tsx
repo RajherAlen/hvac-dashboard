@@ -31,7 +31,7 @@ const employeeLinks = [
 
 export function Sidebar({ onClose }: SidebarProps) {
   const { role, user, signOut } = useAuth();
-  const { data: profile } = useEmployee(user?.id);
+  const { data: profile, isLoading: profileLoading } = useEmployee(user?.id);
   const [showProfile, setShowProfile] = useState(false);
   const links = role === 'admin' ? adminLinks : employeeLinks;
 
@@ -44,13 +44,13 @@ export function Sidebar({ onClose }: SidebarProps) {
         </div>
         <div>
           <p className="font-semibold text-white leading-tight">HVAC Admin</p>
-          <p className="text-xs text-slate-400 capitalize">{role ?? 'loading...'}</p>
+          <p className="text-xs text-slate-400">{role === 'admin' ? 'Administrator' : role === 'employee' ? 'Zaposlenik' : 'Učitavanje…'}</p>
         </div>
       </div>
 
       {/* Nav links */}
-      <nav className="flex-1 px-3 py-4 space-y-1">
-        <p className="px-3 mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+      <nav className="flex-1 px-3 py-4 space-y-1" aria-label="Glavna navigacija">
+        <p className="px-3 mb-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">
           {role === 'admin' ? 'Upravljanje' : 'Moj rad'}
         </p>
         {links.map(({ to, icon: Icon, label }) => (
@@ -82,9 +82,13 @@ export function Sidebar({ onClose }: SidebarProps) {
         >
           <UserCircle size={18} className="shrink-0" />
           <div className="text-left overflow-hidden">
-            <p className="font-medium text-white truncate leading-tight">
-              {profile?.full_name ?? user?.email}
-            </p>
+            {profileLoading ? (
+              <><span className="block h-4 w-28 my-0.5 rounded bg-slate-700 animate-pulse" aria-hidden="true" /><span className="sr-only">Učitavanje profila…</span></>
+            ) : (
+              <p className="font-medium text-white truncate leading-tight">
+                {profile?.full_name ?? user?.email}
+              </p>
+            )}
             <p className="text-xs text-slate-400">Uredi profil</p>
           </div>
         </button>

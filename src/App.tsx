@@ -7,6 +7,7 @@ import {
   useNavigate,
 } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
+import { Toaster } from 'sonner';
 import { queryClient } from './lib/queryClient';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { AppShell } from './components/layout/AppShell';
@@ -23,8 +24,9 @@ import { MyHistoryPage } from './pages/employee/MyHistoryPage';
 
 function Spinner() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50">
-      <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+    <div className="min-h-screen flex items-center justify-center bg-slate-50" role="status">
+      <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" aria-hidden="true" />
+      <span className="sr-only">Učitavanje…</span>
     </div>
   );
 }
@@ -94,6 +96,13 @@ export default function App() {
       <BrowserRouter>
         <AuthProvider>
           <AppRoutes />
+          <Toaster
+            position="top-center"
+            richColors
+            closeButton
+            containerAriaLabel="Obavijesti"
+            toastOptions={{ closeButtonAriaLabel: 'Zatvori obavijest', duration: 5000 }}
+          />
         </AuthProvider>
       </BrowserRouter>
     </QueryClientProvider>

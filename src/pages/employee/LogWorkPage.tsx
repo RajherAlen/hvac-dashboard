@@ -5,12 +5,13 @@ import { EmployeeTimeline } from '../../components/EmployeeTimeline';
 import { useAuth } from '../../hooks/useAuth';
 import { useWorkLogs } from '../../hooks/useWorkLogs';
 import { todayISO, formatHours } from '../../lib/utils';
-import { format } from 'date-fns';
-import { hr } from 'date-fns/locale';
+import { formatDayLong, capitalize } from '../../lib/format-date';
+import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 
 export function LogWorkPage() {
   const { user } = useAuth();
   const [showForm, setShowForm] = useState(false);
+  useDocumentTitle('Unos rada');
 
   const today = todayISO();
   const { data: todayLogs = [], isLoading } = useWorkLogs({
@@ -27,8 +28,8 @@ export function LogWorkPage() {
         <div className="flex items-start justify-between">
           <div>
             <h1 className="text-lg font-bold text-slate-900 sm:text-xl">Unos rada</h1>
-            <p className="text-sm text-slate-500 mt-0.5 capitalize">
-              {format(new Date(), 'EEEE, d MMMM yyyy', { locale: hr })}
+            <p className="text-sm text-slate-500 mt-0.5">
+              {capitalize(formatDayLong(new Date()))}
             </p>
           </div>
           <button
@@ -48,7 +49,7 @@ export function LogWorkPage() {
           <div className="px-4 py-3.5 sm:px-5 sm:py-4 border-b border-slate-100 flex items-center justify-between">
             <div>
               <h2 className="text-sm font-semibold text-slate-800">Današnji unosi</h2>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <p className="text-xs text-slate-600 mt-0.5">
                 {todayLogs.length > 0
                   ? `${formatHours(todayHours)} ukupno · Možete dodati više zadataka`
                   : 'Možete dodati više zadataka po danu'}

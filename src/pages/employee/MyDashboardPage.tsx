@@ -13,12 +13,16 @@ import {
   todayISO,
   formatHours,
 } from '../../lib/utils';
-import { format, parseISO } from 'date-fns';
-import { hr } from 'date-fns/locale';
+import { formatDayLong, formatMonth, formatRange, capitalize } from '../../lib/format-date';
+import { useDocumentTitle } from '../../hooks/useDocumentTitle';
+import { elapsedWorkdays } from '../../lib/period';
+import { toISODate } from '../../lib/format-date';
+import { eachDayOfInterval, parseISO } from 'date-fns';
 
 export function MyDashboardPage() {
   const { user } = useAuth();
   const [showForm, setShowForm] = useState(false);
+  useDocumentTitle('Moja nadzorna ploča');
 
   const today = todayISO();
   const { start: weekStart, end: weekEnd } = getCurrentWeekRange();
@@ -49,8 +53,8 @@ export function MyDashboardPage() {
   const todayHours = todayLogs.reduce((s, l) => s + Number(l.hours_worked), 0);
   const weekHours  = weekLogs.reduce((s, l) => s + Number(l.hours_worked), 0);
   const monthHours = monthLogs.reduce((s, l) => s + Number(l.hours_worked), 0);
-  const dayOfMonth = new Date().getDate();
-  const avgPerDay  = dayOfMonth > 0 ? monthHours / dayOfMonth : 0;
+  const workdays   = elapsedWorkdays(eachDayOfInterval({ start: parseISO(monthStart), end: parseISO(monthEnd) }).map(toISODate), today);
+  const avgPerDay  = workdays > 0 ? monthHours / workdays : 0;
 
   return (
     <div className="min-h-full bg-slate-50">
@@ -59,8 +63,8 @@ export function MyDashboardPage() {
         <div className="flex items-start justify-between">
           <div>
             <h1 className="text-lg font-bold text-slate-900 sm:text-xl">Moja nadzorna ploča</h1>
-            <p className="text-sm text-slate-500 mt-0.5 capitalize">
-              {format(new Date(), 'EEEE, d MMMM yyyy', { locale: hr })}
+            <p className="text-sm text-slate-500 mt-0.5">
+              {capitalize(formatDayLong(new Date()))}
             </p>
           </div>
           <button
@@ -92,8 +96,8 @@ export function MyDashboardPage() {
                     {formatHours(monthHours)}
                   </p>
                 )}
-                <p className="mt-1.5 text-sm text-blue-200 capitalize">
-                  {format(new Date(), 'MMMM yyyy', { locale: hr })}
+                <p className="mt-1.5 text-sm text-blue-100">
+                  {capitalize(formatMonth(new Date()))}
                 </p>
               </div>
               <div className="flex items-center justify-center h-11 w-11 rounded-xl bg-white/20 backdrop-blur-sm shrink-0 ml-3">
@@ -108,7 +112,7 @@ export function MyDashboardPage() {
               </div>
               <div className="h-8 w-px bg-white/20" />
               <div>
-                <p className="text-xs font-medium text-blue-200 uppercase tracking-wide">Prosjek / dan</p>
+                <p className="text-xs font-medium text-blue-200 uppercase tracking-wide">Prosjek / radni dan</p>
                 <p className="mt-0.5 text-xl font-bold text-white">{formatHours(avgPerDay)}</p>
               </div>
             </div>
@@ -126,7 +130,7 @@ export function MyDashboardPage() {
           <StatCard
             title="Ovaj tjedan"
             value={formatHours(weekHours)}
-            subtitle={`${format(parseISO(weekStart), 'd MMM', { locale: hr })} – ${format(parseISO(weekEnd), 'd MMM', { locale: hr })}`}
+            subtitle={formatRange(weekStart, weekEnd)}
             icon={TrendingUp}
             color="green"
           />
@@ -141,7 +145,7 @@ export function MyDashboardPage() {
             <div>
               <h2 className="text-sm font-semibold text-slate-800">Današnji radni zapisi</h2>
               {todayLogs.length > 0 && (
-                <p className="text-xs text-slate-400 mt-0.5">
+                <p className="text-xs text-slate-600 mt-0.5">
                   {formatHours(todayHours)} ukupno danas
                 </p>
               )}

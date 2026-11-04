@@ -17,4 +17,73 @@
   #root {
     min-height: 100vh;
   }
+
+  /* Placeholder: slate-500 (#64748b) = 4.76:1 na bijeloj – zadovoljava WCAG AA */
+  input::placeholder,
+  textarea::placeholder {
+    color: #64748b;
+    opacity: 1;
+  }
+
+  /* Vidljiv fokus za tipkovnicu na svim interaktivnim elementima.
+     Inputi imaju vlastiti ring (focus:ring-2), pa ovdje ciljamo ostalo. */
+  a:focus-visible,
+  button:focus-visible,
+  [role='button']:focus-visible,
+  [role='tab']:focus-visible,
+  [role='menuitem']:focus-visible,
+  summary:focus-visible,
+  [tabindex]:not([tabindex='-1']):focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+  /* Na tamnoj pozadini (sidebar) svjetliji ring */
+  aside a:focus-visible,
+  aside button:focus-visible {
+    outline-color: #93c5fd;
+  }
+
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']) {
+    cursor: pointer;
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes sheet-in {
+  from { transform: translateY(16px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* react-day-picker – usklađeno s aplikacijom */
+.rdp-hvac {
+  --rdp-accent-color: #2563eb;
+  --rdp-accent-background-color: #eff6ff;
+  --rdp-day-height: 40px;
+  --rdp-day-width: 40px;
+  --rdp-day_button-height: 38px;
+  --rdp-day_button-width: 38px;
+  --rdp-today-color: #1d4ed8;
+  font-size: 14px;
+}
+.rdp-hvac .rdp-caption_label {
+  text-transform: capitalize;
+  font-size: 15px;
+}
+.rdp-hvac .rdp-weekday {
+  color: #475569;
+  font-size: 12px;
+}
+.rdp-hvac .rdp-disabled {
+  opacity: 0.35;
 }
