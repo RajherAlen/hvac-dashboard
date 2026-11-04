@@ -15,7 +15,7 @@ const SOON_INITIAL = 4;
  * Tehničarev pogled: servisi zakazani za njega (ili za bilo koga) i objekti kojima
  * servis uskoro dospijeva. "Upiši servis" otvara unos s objektom i uređajima.
  */
-export function UpcomingServicesCard() {
+export function UpcomingServicesCard({ hideScheduled = false }: { hideScheduled?: boolean } = {}) {
   const { user } = useAuth();
   const board = useServiceBoard();
   const [logging, setLogging] = useState<ServiceItem | null>(null);
@@ -25,12 +25,14 @@ export function UpcomingServicesCard() {
   if (board.isLoading || !board.enabled) return null;
 
   const scheduled = board.items
-    .filter(i => i.sc.status === 'scheduled' && (!i.sc.assigned_to || i.sc.assigned_to === user?.id))
+    .filter(i => !hideScheduled && i.sc.status === 'scheduled' && (!i.sc.assigned_to || i.sc.assigned_to === user?.id))
     .sort((a, b) => (a.sc.scheduled_for ?? '').localeCompare(b.sc.scheduled_for ?? ''));
   const soon = board.items
     .filter(i => (i.sc.status === 'due' || i.sc.status === 'contacted') && dueText(i.sc.due_date, today).days <= SOON_DAYS)
     .sort((a, b) => a.sc.due_date.localeCompare(b.sc.due_date));
   const soonShown = showAll ? soon : soon.slice(0, SOON_INITIAL);
+  // Uz "Moje naloge" (zakazani servisi su nalozi) prikazuje se samo popis koji uskoro dospijeva
+  if (hideScheduled && soon.length === 0) return null;
 
   return (
     <section aria-labelledby="upcoming-services" className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -38,7 +40,9 @@ export function UpcomingServicesCard() {
         <div>
           <h2 id="upcoming-services" className="text-sm font-semibold text-slate-800">Nadolazeći servisi</h2>
           <p className="text-xs text-slate-600 mt-0.5">
-            {scheduled.length > 0
+            {hideScheduled
+              ? `Dospijeva u idućih ${SOON_DAYS} dana, još nije zakazano`
+              : scheduled.length > 0
               ? `${scheduled.length} ${pluralHr(scheduled.length, 'zakazan', 'zakazana', 'zakazanih')} za vas`
               : 'Nema zakazanih servisa za vas'}
           </p>

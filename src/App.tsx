@@ -25,6 +25,7 @@ import { ClientsPage } from './pages/clients/ClientsPage';
 import { ClientDetailPage } from './pages/clients/ClientDetailPage';
 import { LinkLegacyPage } from './pages/clients/LinkLegacyPage';
 import { ServicesPage } from './pages/services/ServicesPage';
+import { SchedulePage } from './pages/schedule/SchedulePage';
 
 function Spinner() {
   return (
@@ -95,6 +96,7 @@ function AppRoutes() {
       <Route element={<RequireAuth requiredRole="admin"><AppShell /></RequireAuth>}>
         <Route path="/klijenti/povezivanje" element={<LinkLegacyPage />} />
         <Route path="/servisi" element={<ServicesPage />} />
+        <Route path="/raspored" element={<SchedulePage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />
@@ -113,7 +115,12 @@ export default function App() {
             richColors
             closeButton
             containerAriaLabel="Obavijesti"
-            toastOptions={{ closeButtonAriaLabel: 'Zatvori obavijest', duration: 5000 }}
+            toastOptions={{
+              closeButtonAriaLabel: 'Zatvori obavijest',
+              duration: 5000,
+              // Zadane "rich" boje imaju preslab kontrast (zeleno #008a2e na svijetlozelenom ≈ 4,3:1)
+              classNames: { success: '!text-emerald-900', error: '!text-red-900' },
+            }}
           />
         </AuthProvider>
       </BrowserRouter>

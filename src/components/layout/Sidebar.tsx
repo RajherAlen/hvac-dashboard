@@ -10,6 +10,7 @@ import {
   UserCircle,
   Building2,
   Wrench,
+  CalendarRange,
 } from 'lucide-react';
 import { useClientDirectory } from '../../hooks/useClients';
 import { useAuth } from '../../hooks/useAuth';
@@ -25,6 +26,7 @@ const adminLinks = [
   { to: '/admin/dashboard', icon: LayoutDashboard, label: 'Nadzorna ploča' },
   { to: '/admin/employees', icon: Users, label: 'Zaposlenici' },
   { to: '/klijenti', icon: Building2, label: 'Klijenti' },
+  { to: '/raspored', icon: CalendarRange, label: 'Raspored' },
   { to: '/servisi', icon: Wrench, label: 'Servisi' },
 ];
 
@@ -41,7 +43,7 @@ export function Sidebar({ onClose }: SidebarProps) {
   const [showProfile, setShowProfile] = useState(false);
   // Klijenti se prikazuju tek kad je migracija pokrenuta
   const { missingSchema } = useClientDirectory();
-  const links = (role === 'admin' ? adminLinks : employeeLinks).filter(l => !['/klijenti', '/servisi'].includes(l.to) || !missingSchema);
+  const links = (role === 'admin' ? adminLinks : employeeLinks).filter(l => !['/klijenti', '/servisi', '/raspored'].includes(l.to) || !missingSchema);
 
   return (
     <aside className="flex flex-col h-full bg-slate-900 text-slate-100 w-64">

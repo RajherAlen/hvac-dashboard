@@ -15,6 +15,8 @@ interface Props {
   employeeHref?: (id: string) => string;
   /** Klik na ćeliju s unosima */
   onCellClick?: (employeeId: string, day: string) => void;
+  /** Planirani sati iz rasporeda, ključ "zaposlenik|dan". Kad postoji, cilj ćelije je plan umjesto norme. */
+  plan?: Map<string, number>;
 }
 
 type CellKind = 'full' | 'part' | 'miss' | 'today' | 'future' | 'weekend';
@@ -38,7 +40,7 @@ function compact(v: number, unit: boolean): string {
  * Matrica Zaposlenik × Dan: tko je koji dan koliko upisao, obojeno prema normi.
  * Odmah se vidi "rupa" (npr. neupisan utorak) koja se iz grafa ne može pročitati.
  */
-export function StaffDayMatrix({ logs, staff, days, today, colors, normPerDay = 8, employeeHref, onCellClick }: Props) {
+export function StaffDayMatrix({ logs, staff, days, today, colors, normPerDay = 8, employeeHref, onCellClick, plan }: Props) {
   const dense = days.length > 10;
   const hours = new Map<string, number>();
   for (const l of logs) {
@@ -46,21 +48,27 @@ export function StaffDayMatrix({ logs, staff, days, today, colors, normPerDay = 
     hours.set(k, (hours.get(k) ?? 0) + Number(l.hours_worked));
   }
   const get = (emp: string, day: string) => hours.get(`${emp}|${day}`) ?? 0;
-  // Norma za postotak: radni dani koji su završili (danas se ne računa dok traje)
-  const normDays = days.filter(d => d < today && isWorkday(d)).length;
+  const planned = (emp: string, day: string) => plan?.get(`${emp}|${day}`) ?? 0;
+  const hasPlan = !!plan && plan.size > 0;
+  /** Cilj ćelije: plan iz rasporeda, a bez plana norma radnog dana */
+  const target = (emp: string, day: string) => {
+    const p = planned(emp, day);
+    if (p > 0) return p;
+    return hasPlan ? 0 : isWorkday(day) ? normPerDay : 0;
+  };
 
-  const kindOf = (v: number, day: string): CellKind => {
+  const kindOf = (v: number, day: string, goal: number): CellKind => {
     if (day > today) return 'future';
-    if (day === today) return v >= normPerDay ? 'full' : 'today';
-    if (!isWorkday(day)) return v === 0 ? 'weekend' : v >= normPerDay ? 'full' : 'part';
-    return v >= normPerDay ? 'full' : v > 0 ? 'part' : 'miss';
+    if (day === today) return goal > 0 && v >= goal ? 'full' : 'today';
+    if (goal === 0) return v === 0 ? 'weekend' : 'full';
+    return v >= goal ? 'full' : v > 0 ? 'part' : 'miss';
   };
 
   const cellLabel = (name: string, day: string, v: number, kind: CellKind) => {
     const d = capitalize(formatDayLong(day));
     if (kind === 'future') return `${name}, ${d}: još nije prošlo`;
     if (kind === 'today' && v === 0) return `${name}, ${d}: danas, još nema unosa`;
-    if (kind === 'weekend' && v === 0) return `${name}, ${d}: vikend`;
+    if (kind === 'weekend' && v === 0) return `${name}, ${d}: ${isWorkday(day) ? 'ništa planirano' : 'vikend'}`;
     if (kind === 'miss') return `${name}, ${d}: nema unosa`;
     return `${name}, ${d}: ${formatHours(v)}`;
   };
@@ -72,7 +80,7 @@ export function StaffDayMatrix({ logs, staff, days, today, colors, normPerDay = 
     <div>
       <div className="relative overflow-x-auto -mx-1 px-1">
         <table className={cn('w-full border-separate', dense ? 'border-spacing-[2px]' : 'border-spacing-1')}>
-          <caption className="sr-only">Sati po zaposleniku i danu. Norma {normPerDay} h po radnom danu.</caption>
+          <caption className="sr-only">Sati po zaposleniku i danu. {hasPlan ? 'Ćelija pokazuje upisano / planirano.' : `Norma ${normPerDay} h po radnom danu.`}</caption>
           <thead>
             <tr>
               <th scope="col" className="sticky left-0 z-10 bg-white text-left text-xs font-medium text-slate-600 pr-2">Zaposlenik</th>
@@ -99,8 +107,11 @@ export function StaffDayMatrix({ logs, staff, days, today, colors, normPerDay = 
           <tbody>
             {staff.map(emp => {
               const sum = days.reduce((s, d) => s + get(emp.id, d), 0);
-              const normSum = days.filter(d => d < today && isWorkday(d)).reduce((s, d) => s + get(emp.id, d), 0);
-              const pct = normDays > 0 ? Math.round((normSum / (normDays * normPerDay)) * 100) : null;
+              // Postotak cilja (plan ili norma) za dane koji su završili; danas se ne računa dok traje
+              const pastDays = days.filter(d => d < today);
+              const goalSum = pastDays.reduce((s, d) => s + target(emp.id, d), 0);
+              const doneSum = pastDays.filter(d => target(emp.id, d) > 0).reduce((s, d) => s + get(emp.id, d), 0);
+              const pct = goalSum > 0 ? Math.round((doneSum / goalSum) * 100) : null;
               return (
                 <tr key={emp.id}>
                   <th scope="row" className="sticky left-0 z-10 bg-white text-left text-sm font-medium text-slate-800 pr-2 whitespace-nowrap">
@@ -113,9 +124,11 @@ export function StaffDayMatrix({ logs, staff, days, today, colors, normPerDay = 
                   </th>
                   {days.map(d => {
                     const v = get(emp.id, d);
-                    const kind = kindOf(v, d);
-                    const text = kind === 'future' || (kind === 'weekend' && v === 0) ? '·' : kind === 'today' && v === 0 ? '—' : compact(v, !dense);
-                    const label = cellLabel(emp.full_name, d, v, kind);
+                    const p = planned(emp.id, d);
+                    const kind = kindOf(v, d, target(emp.id, d));
+                    let text = kind === 'future' || (kind === 'weekend' && v === 0) ? '·' : kind === 'today' && v === 0 ? '—' : compact(v, !dense && p === 0);
+                    if (p > 0) text = kind === 'future' ? compact(p, false) : `${compact(v, false)}/${compact(p, false)}`;
+                    const label = cellLabel(emp.full_name, d, v, kind) + (p > 0 ? `, plan ${formatHours(p)}` : '');
                     const cls = cn('block w-full rounded-md text-center font-semibold tabular-nums', dense ? 'py-1.5 text-[11px]' : 'py-2 text-[13px]', CELL[kind]);
                     return (
                       <td key={d} className="p-0">
@@ -156,7 +169,7 @@ export function StaffDayMatrix({ logs, staff, days, today, colors, normPerDay = 
         </table>
       </div>
       <ul className="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-xs text-slate-600" aria-label="Legenda boja">
-        <li className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-emerald-100 border border-emerald-200" aria-hidden="true" />{normPerDay} h i više</li>
+        <li className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-emerald-100 border border-emerald-200" aria-hidden="true" />{hasPlan ? 'plan ostvaren' : `${normPerDay} h i više`}</li>
         <li className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-amber-100 border border-amber-200" aria-hidden="true" />djelomično</li>
         <li className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-red-100 border border-red-200" aria-hidden="true" />nema unosa (radni dan)</li>
         <li className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm border border-slate-200 bg-[repeating-linear-gradient(135deg,#eef2f7_0_3px,#f8fafc_3px_6px)]" aria-hidden="true" />danas</li>

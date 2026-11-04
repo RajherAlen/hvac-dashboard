@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { DropdownMenu } from 'radix-ui';
 import { toast } from 'sonner';
 import {
@@ -9,13 +9,15 @@ import { useServiceBoard, useUpdateServiceCase, type ServiceItem } from '../../h
 import { useProfileNames } from '../../hooks/useWorkLogChanges';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { ContactDialog, ScheduleDialog } from '../../components/services/ServiceDialogs';
+import { OrderFormDialog } from '../../components/orders/OrderFormDialog';
+import { usePlan } from '../../hooks/useWorkOrders';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { ModuleNotEnabled } from '../../components/clients/ModuleNotEnabled';
 import { siteAddress } from '../../lib/clients';
 import { errorMessage } from '../../lib/errors';
 import { formatNumeric, formatRelative } from '../../lib/format-date';
 import { deviceDisplayName, dueText, visitDayLabel, SERVICE_HORIZON_DAYS } from '../../lib/service';
-import { cn, pluralHr } from '../../lib/utils';
+import { cn, pluralHr, todayISO } from '../../lib/utils';
 import type { ServiceCase } from '../../types';
 
 type Tab = 'contact' | 'scheduled' | 'snoozed' | 'declined';
@@ -47,6 +49,17 @@ export function ServicesPage() {
   const [city, setCity] = useState('');
   const [contacting, setContacting] = useState<ServiceItem | null>(null);
   const [scheduling, setScheduling] = useState<ServiceItem | null>(null);
+  const navigate = useNavigate();
+  // S rasporedom naloga zakazivanje servisa stvara nalog, a postojeći termin se mijenja u rasporedu
+  const ordersProbe = usePlan(todayISO(), todayISO());
+  const ordersOn = ordersProbe.data !== undefined && ordersProbe.data !== null;
+  const schedule = (item: ServiceItem) => {
+    if (ordersOn && item.sc.status === 'scheduled' && item.sc.scheduled_for) {
+      navigate(`/raspored?view=week&date=${item.sc.scheduled_for}`);
+      return;
+    }
+    setScheduling(item);
+  };
   const [declining, setDeclining] = useState<ServiceItem | null>(null);
   const update = useUpdateServiceCase();
   const { today } = board;
@@ -150,7 +163,7 @@ export function ServicesPage() {
                 {g.items.map(item => (
                   <CaseRow key={item.sc.id} item={item} today={today} assignee={item.sc.assigned_to ? names.get(item.sc.assigned_to)?.name ?? null : null}
                     onContact={() => setContacting(item)}
-                    onSchedule={() => setScheduling(item)}
+                    onSchedule={() => schedule(item)}
                     onDecline={() => setDeclining(item)}
                     onChange={(patch, msg) => { void change(item, patch, msg).catch(e => toast.error(errorMessage(e))); }}
                   />
@@ -165,9 +178,14 @@ export function ServicesPage() {
 
       {contacting && (
         <ContactDialog item={contacting} onClose={() => setContacting(null)}
-          onSchedule={() => { const it = contacting; setContacting(null); setScheduling(it); }} />
+          onSchedule={() => { const it = contacting; setContacting(null); schedule(it); }} />
       )}
-      {scheduling && <ScheduleDialog item={scheduling} onClose={() => setScheduling(null)} />}
+      {scheduling && (ordersOn ? (
+        <OrderFormDialog
+          preset={{ kind: 'servis', site_id: scheduling.site.id, device_ids: scheduling.devices.map(d => d.id), title: 'Redovni servis', service_case_id: scheduling.sc.id }}
+          onClose={() => setScheduling(null)}
+        />
+      ) : <ScheduleDialog item={scheduling} onClose={() => setScheduling(null)} />)}
       <ConfirmDialog
         open={!!declining}
         onOpenChange={o => { if (!o) setDeclining(null); }}

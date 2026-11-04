@@ -1,4 +1,6 @@
 export type DeviceKind = 'split' | 'multisplit' | 'vrf' | 'toplinska_pumpa' | 'kotao' | 'plamenik' | 'ventilacija' | 'ostalo'
+export type WorkOrderKind = 'servis' | 'montaza' | 'popravak' | 'dijagnostika' | 'ostalo'
+export type WorkOrderStatus = 'open' | 'done' | 'cancelled'
 export type ServiceCaseStatus = 'due' | 'contacted' | 'scheduled' | 'snoozed' | 'declined' | 'done'
 
 export type Json =
@@ -188,6 +190,46 @@ export type Database = {
         }
         Relationships: []
       }
+      work_orders: {
+        Row: {
+          id: string
+          site_id: string | null
+          kind: WorkOrderKind
+          title: string
+          notes: string | null
+          estimate_hours: number
+          status: WorkOrderStatus
+          service_case_id: string | null
+          created_by: string | null
+          created_at: string
+          done_at: string | null
+        }
+        Insert: Record<string, never>
+        Update: { status?: WorkOrderStatus; done_at?: string | null }
+        Relationships: []
+      }
+      work_order_devices: {
+        Row: { work_order_id: string; device_id: string }
+        Insert: Record<string, never>
+        Update: Record<string, never>
+        Relationships: []
+      }
+      work_order_assignments: {
+        Row: {
+          id: string
+          work_order_id: string
+          employee_id: string
+          day: string
+          planned_hours: number
+          position: number
+          done_at: string | null
+        }
+        Insert: { work_order_id: string; employee_id: string; day: string; planned_hours: number; position?: number }
+        Update: { employee_id?: string; day?: string; planned_hours?: number; position?: number; done_at?: string | null }
+        Relationships: [
+          { foreignKeyName: "work_order_assignments_work_order_id_fkey"; columns: ["work_order_id"]; isOneToOne: false; referencedRelation: "work_orders"; referencedColumns: ["id"] },
+        ]
+      }
       service_cases: {
         Row: {
           id: string
@@ -252,6 +294,8 @@ export type Database = {
       }
       work_logs: {
         Row: {
+          /** Postoji tek nakon migracije 20261109_work_orders.sql */
+          assignment_id?: string | null
           /** Postoji tek nakon migracije 20261106_work_log_audit.sql */
           created_by?: string | null
           edited_at?: string | null
@@ -269,6 +313,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          assignment_id?: string | null
           /** Postoji tek nakon migracije 20261106_work_log_audit.sql */
           created_by?: string | null
           edited_at?: string | null
@@ -286,6 +331,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          assignment_id?: string | null
           /** Postoji tek nakon migracije 20261106_work_log_audit.sql */
           created_by?: string | null
           edited_at?: string | null
@@ -321,6 +367,8 @@ export type Database = {
     }
     Functions: {
       update_work_log: { Args: { p_id: string; p_values: Json; p_device_ids?: string[] | null; p_is_service?: boolean | null }; Returns: Database['public']['Tables']['work_logs']['Row'] }
+      save_work_order: { Args: { p_order: Json; p_assignments: Json; p_device_ids?: string[] }; Returns: string }
+      complete_assignment: { Args: { p_assignment: string; p_order_done?: boolean }; Returns: undefined }
       refresh_service_cases: { Args: { p_horizon_days?: number }; Returns: number }
       add_work_logs: { Args: { items: Json }; Returns: string[] }
       create_site_quick: {
