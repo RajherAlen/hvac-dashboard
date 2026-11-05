@@ -104,6 +104,16 @@ export function formatRange(startInput: DateInput, endInput: DateInput): string 
   return `${a.getDate()}. – ${formatDay(b)}`;
 }
 
+/** 3. 11. · 3.–7. 11. · 28. 10.–3. 11. */
+export function formatShortRange(startInput: DateInput, endInput: DateInput): string {
+  const a = toDate(startInput);
+  const b = toDate(endInput);
+  if (toISODate(a) === toISODate(b)) return formatShort(a);
+  return a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear()
+    ? `${a.getDate()}.–${formatShort(b)}`
+    : `${formatShort(a)}–${formatShort(b)}`;
+}
+
 /** T45 · 2.–8. 11.  (ISO tjedan, pon–ned; raspon može biti odrezan rubom perioda) */
 export function formatWeekBucket(startInput: DateInput, endInput: DateInput): string {
   const a = toDate(startInput);

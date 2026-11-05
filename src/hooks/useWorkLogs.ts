@@ -5,9 +5,10 @@ import { CHANGES_KEY, isMissingFunction } from './useWorkLogChanges';
 
 const QUERY_KEY = 'work_logs';
 
-export function useWorkLogs(filters: WorkLogFilters = {}) {
+export function useWorkLogs(filters: WorkLogFilters = {}, enabled = true) {
   return useQuery({
     queryKey: [QUERY_KEY, filters],
+    enabled,
     queryFn: async () => {
       let q = supabase
         .from('work_logs')

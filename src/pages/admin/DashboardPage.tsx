@@ -5,7 +5,12 @@ import {
   Clock, Users, ClipboardList, Gauge, Download, MapPin,
   ChevronDown, User, FileText, Files, Inbox, CheckCircle2,
 } from 'lucide-react';
-import { addMonths, addWeeks, differenceInCalendarDays, addDays, parseISO, startOfMonth, endOfMonth, isWeekend } from 'date-fns';
+import { addMonths, addWeeks, differenceInCalendarDays, addDays, parseISO, startOfMonth, endOfMonth } from 'date-fns';
+import { CalendarOff } from 'lucide-react';
+import { useWorkCalendar, usePendingAbsences } from '../../hooks/useAbsences';
+import { AbsenceDialog } from '../../components/absences/AbsenceDialog';
+import { ABSENCE_TONE } from '../../components/absences/absenceStyle';
+import { ABSENCE_CODE, ABSENCE_LABEL, type WorkCalendar } from '../../lib/workCalendar';
 import { StatCard, type StatDelta } from '../../components/StatCard';
 import { HoursChart } from '../../components/HoursChart';
 import { StaffDayMatrix } from '../../components/StaffDayMatrix';
@@ -21,7 +26,7 @@ import { BucketEntriesDialog } from '../../components/BucketEntriesDialog';
 import { LogLocation } from '../../components/clients/LogLocation';
 import { ServiceDueCard } from '../../components/clients/ServiceDueCard';
 import type { Bucket } from '../../lib/period';
-import type { WorkLogWithEmployee } from '../../types';
+import type { AbsenceKind, WorkLogWithEmployee } from '../../types';
 import { usePeriod } from '../../hooks/usePeriod';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { todayISO, formatHours, pluralHr, cn } from '../../lib/utils';
@@ -82,6 +87,10 @@ export function AdminDashboardPage() {
   // Raspored naloga (null = modul nije uključen → usporedba s normom kao prije)
   const { data: periodPlan } = usePlan(startDate, endDate);
   const { data: recentPlan } = usePlan(recentFrom, today);
+  // Radni kalendar: praznici, neradni dani tvrtke i odsutnosti (period + zadnjih 10 dana za panel "Danas")
+  const { cal } = useWorkCalendar(startDate < recentFrom ? startDate : recentFrom, endDate > today ? endDate : today);
+  const { data: pendingAbsences } = usePendingAbsences();
+  const [absenceDialog, setAbsenceDialog] = useState<{ employeeId: string; day: string } | null>(null);
 
   // Admini ne evidentiraju rad → isključeni iz KPI-ja, grafa, matrice i izvoza.
   // Graf/izvoz: svi zaposlenici (i deaktivirani – njihovi stari sati ostaju u povijesti).
@@ -100,10 +109,13 @@ export function AdminDashboardPage() {
   const loggedTodayIds  = new Set(todayLogs.map(l => l.employee_id));
   const activeToday     = activeStaff.filter(e => loggedTodayIds.has(e.id)).length;
 
-  // Popunjenost norme: završeni radni dani (danas se ne broji dok traje) × aktivni zaposlenici × 8 h
+  // Popunjenost norme: završeni radni dani (danas se ne broji dok traje) × aktivni zaposlenici × 8 h,
+  // bez praznika, neradnih dana i odobrenih odsutnosti
   const normUpTo     = endDate < today ? endDate : toISODate(addDays(parseISO(today), -1));
-  const normWorkdays = elapsedWorkdays(periodDays, normUpTo);
-  const normHours    = NORM_PER_DAY * activeStaff.length * normWorkdays;
+  const normWorkdays = elapsedWorkdays(periodDays, normUpTo, cal);
+  const normDays     = periodDays.filter(d => d <= normUpTo && cal.isWorkday(d));
+  const normHours    = activeStaff.reduce((s, e) => s + normDays.reduce((t, d) => t + cal.expected(e.id, d, NORM_PER_DAY), 0), 0);
+  const absenceDays  = activeStaff.reduce((s, e) => s + normDays.filter(d => cal.absenceOf(e.id, d)).length, 0);
   const doneHours    = sumHours(periodLogs.filter(l => l.log_date <= normUpTo));
   const normPct      = normHours > 0 ? Math.round((doneHours / normHours) * 100) : null;
 
@@ -121,7 +133,8 @@ export function AdminDashboardPage() {
     return m;
   }, [planByEmpDay]);
   const hasPlan = planMap.size > 0;
-  const plannedUpTo = (periodPlan ?? []).filter(a => a.day <= normUpTo).reduce((t, a) => t + Number(a.planned_hours), 0);
+  // Plan na dan odobrene odsutnosti je sukob, ne obveza – ne ulazi u ostvarenje
+  const plannedUpTo = (periodPlan ?? []).filter(a => a.day <= normUpTo && !cal.absenceOf(a.employee_id, a.day)).reduce((t, a) => t + Number(a.planned_hours), 0);
   // Uspoređuju se samo osobe i dani koji su imali plan (rad bez naloga ne napuhuje postotak)
   const doneOnPlan = sumHours(periodLogs.filter(l => l.log_date <= normUpTo && planMap.has(`${l.employee_id}|${l.log_date}`)));
   const planPct = plannedUpTo > 0 ? Math.round((doneOnPlan / plannedUpTo) * 100) : null;
@@ -135,7 +148,7 @@ export function AdminDashboardPage() {
 
   // Rad se upisuje na kraju dana ili sljedeće jutro, pa se "nedostaje" gleda za prethodni radni dan.
   let prevWorkday = addDays(parseISO(today), -1);
-  while (isWeekend(prevWorkday)) prevWorkday = addDays(prevWorkday, -1);
+  for (let i = 0; i < 14 && !cal.isWorkday(toISODate(prevWorkday)); i++) prevWorkday = addDays(prevWorkday, -1);
   const prevDay = toISODate(prevWorkday);
   const recentLogs = allRecentLogs.filter(l => isStaff(l.profiles));
   const loggedPrevIds = new Set(recentLogs.filter(l => l.log_date === prevDay && Number(l.hours_worked) > 0).map(l => l.employee_id));
@@ -151,8 +164,13 @@ export function AdminDashboardPage() {
     return employees.filter(e => active.has(e.id) || withHours.has(e.id));
   }, [employees, periodLogs, activeIds]);
 
-  const missingPrev = directory.entries.filter(e => !e.isAdmin && e.status === 'aktivan' && !loggedPrevIds.has(e.emp.id));
-  const daysNote = `${normWorkdays} ${pluralHr(normWorkdays, 'radni dan', 'radna dana', 'radnih dana')}`;
+  const expectedPrev = directory.entries.filter(e => !e.isAdmin && e.status === 'aktivan' && !loggedPrevIds.has(e.emp.id));
+  // Odsutni toga dana nisu "propustili unos"
+  const missingPrev = expectedPrev.filter(e => !cal.absenceOf(e.emp.id, prevDay));
+  const absentPrev = expectedPrev.filter(e => cal.absenceOf(e.emp.id, prevDay));
+  const daysNote = `${normWorkdays} ${pluralHr(normWorkdays, 'radni dan', 'radna dana', 'radnih dana')}`
+    + (absenceDays > 0 ? `, ${absenceDays} ${pluralHr(absenceDays, 'dan', 'dana', 'dana')} odsutnosti` : '');
+  const pendingCount = pendingAbsences?.length ?? 0;
 
   return (
     <div className="px-4 py-4 sm:p-6 flex flex-col gap-3 sm:gap-4">
@@ -237,6 +255,7 @@ export function AdminDashboardPage() {
         normPerPerson={NORM_PER_DAY}
         planByEmpDay={hasPlan ? planByEmpDay : undefined}
         normStaffIds={activeIds}
+        cal={cal}
         legendToggle
         height={280}
         maxBarSize={56}
@@ -248,8 +267,18 @@ export function AdminDashboardPage() {
             <h2 id="matrix-title" className="text-sm font-semibold text-slate-800">
               {view === 'week' ? 'Tjedni pregled po zaposleniku' : 'Mjesečni pregled po zaposleniku'}
             </h2>
-            <span className="text-xs text-slate-600">Norma {NORM_PER_DAY} h po radnom danu</span>
+            <span className="text-xs text-slate-600">Norma {NORM_PER_DAY} h po radnom danu · praznici i odsutnosti se ne broje</span>
           </div>
+          {pendingCount > 0 && (
+            <Link to="/odsutnosti"
+              className="mb-3 flex items-center gap-2 text-sm text-slate-800 bg-slate-50 hover:bg-slate-100 border border-dashed border-slate-300 rounded-lg px-3 py-2">
+              <CalendarOff size={15} className="text-slate-500 shrink-0" aria-hidden="true" />
+              <span className="flex-1">
+                <strong className="font-semibold">{pendingCount}</strong> {pluralHr(pendingCount, 'zahtjev za odsutnost čeka', 'zahtjeva za odsutnost čekaju', 'zahtjeva za odsutnost čeka')} odobrenje
+              </span>
+              <span className="text-blue-700 font-medium">Pregledaj</span>
+            </Link>
+          )}
           {employeesLoading || isLoading ? (
             <div className="space-y-2" aria-busy="true">{[0, 1, 2].map(i => <div key={i} className="h-9 bg-slate-100 rounded animate-pulse" />)}</div>
           ) : matrixStaff.length === 0 ? (
@@ -263,6 +292,8 @@ export function AdminDashboardPage() {
               colors={colors}
               normPerDay={NORM_PER_DAY}
               plan={hasPlan ? planMap : undefined}
+              cal={cal}
+              onAbsenceMoreDays={cal.absencesEnabled ? (employeeId, day) => setAbsenceDialog({ employeeId, day }) : undefined}
               employeeHref={employeeHref}
               onCellClick={(employeeId, day) => setOpenBucket({ bucket: { key: day, label: day, days: [day] }, employeeId })}
             />
@@ -274,6 +305,8 @@ export function AdminDashboardPage() {
           loading={todayLoading || employeesLoading}
           latestLog={latestLog ?? null}
           missing={missingPrev}
+          absent={absentPrev}
+          cal={cal}
           todayPlan={(recentPlan ?? []).filter(a => a.day === today)}
           prevPlan={(recentPlan ?? []).filter(a => a.day === prevDay)}
           prevDay={prevDay}
@@ -291,6 +324,16 @@ export function AdminDashboardPage() {
           logs={openBucket.employeeId ? periodLogs.filter(l => l.employee_id === openBucket.employeeId) : periodLogs}
           onClose={() => setOpenBucket(null)}
           employeeHref={employeeHref}
+        />
+      )}
+
+      {absenceDialog && (
+        <AbsenceDialog
+          asAdmin
+          employeeId={absenceDialog.employeeId}
+          employees={employees}
+          initialStart={absenceDialog.day}
+          onClose={() => setAbsenceDialog(null)}
         />
       )}
 
@@ -312,7 +355,10 @@ function NormBar({ pct }: { pct: number }) {
 
 // ─── Danas: aktivnost i tko još nije upisao ─────────────────────────────────
 
-function TodayPanel({ todayLogs, loading, latestLog, missing, prevDay, staffCount, recentLogs, today, colors, employeeHref, todayPlan, prevPlan }: {
+function TodayPanel({ todayLogs, loading, latestLog, missing, absent, cal, prevDay, staffCount, recentLogs, today, colors, employeeHref, todayPlan, prevPlan }: {
+  /** Odsutni na prethodni radni dan (nisu "propustili" unos) */
+  absent: DirectoryEntry[];
+  cal: WorkCalendar;
   todayPlan: PlanAssignment[];
   prevPlan: PlanAssignment[];
   todayLogs: WorkLogWithEmployee[];
@@ -329,8 +375,8 @@ function TodayPanel({ todayLogs, loading, latestLog, missing, prevDay, staffCoun
 }) {
   // Zadnjih 5 radnih dana (uključujući danas) za traku uz svako ime
   const stripDays: string[] = [];
-  for (let d = parseISO(today); stripDays.length < 5; d = addDays(d, -1)) {
-    if (!isWeekend(d)) stripDays.unshift(toISODate(d));
+  for (let d = parseISO(today), i = 0; stripDays.length < 5 && i < 30; d = addDays(d, -1), i++) {
+    if (cal.isWorkday(toISODate(d))) stripDays.unshift(toISODate(d));
   }
   const dir = useClientDirectory();
   const placeOf = (siteId: string | null) => (siteId ? dir.siteIndex.get(siteId)?.client.name ?? 'Objekt' : OFFICE_LOCATION);
@@ -437,9 +483,10 @@ function TodayPanel({ todayLogs, loading, latestLog, missing, prevDay, staffCoun
                   <ul className="pb-1">
                     {missing.map(e => {
                       const hours = stripDays.map(d => hoursOn(e.emp.id, d));
-                      // Koliko radnih dana zaredom (bez današnjeg, koji još traje) nema unosa
+                      const away = stripDays.map(d => cal.absenceOf(e.emp.id, d)?.kind ?? null);
+                      // Koliko radnih dana zaredom (bez današnjeg, koji još traje) nema unosa; dani odsutnosti se preskaču
                       let gap = 0;
-                      for (let i = stripDays.length - 2; i >= 0 && hours[i] === 0; i--) gap++;
+                      for (let i = stripDays.length - 2; i >= 0 && hours[i] === 0; i--) if (!away[i]) gap++;
                       return (
                         <li key={e.emp.id}>
                           <Link to={employeeHref(e.emp.id)} className="flex items-center gap-3 px-4 sm:px-5 py-2 hover:bg-slate-50 focus-visible:outline-offset-[-2px]">
@@ -456,7 +503,7 @@ function TodayPanel({ todayLogs, loading, latestLog, missing, prevDay, staffCoun
                                   })()}
                               </span>
                             </span>
-                            <DayStrip days={stripDays} hours={hours} today={today} />
+                            <DayStrip days={stripDays} hours={hours} away={away} today={today} />
                           </Link>
                         </li>
                       );
@@ -464,6 +511,14 @@ function TodayPanel({ todayLogs, loading, latestLog, missing, prevDay, staffCoun
                   </ul>
                   <p className="px-4 sm:px-5 pb-3 text-[11px] text-slate-500 text-right">Zadnjih 5 radnih dana</p>
                 </>
+              )}
+              {absent.length > 0 && (
+                <p className="px-4 sm:px-5 pb-3 -mt-1 text-xs text-slate-600">
+                  Odsutni: {absent.map(e => {
+                    const a = cal.absenceOf(e.emp.id, prevDay);
+                    return `${e.emp.full_name}${a ? ` (${ABSENCE_LABEL[a.kind].toLowerCase()})` : ''}`;
+                  }).join(', ')}
+                </p>
               )}
             </div>
           )}
@@ -485,13 +540,22 @@ const STRIP: Record<'full' | 'part' | 'miss' | 'today', string> = {
   today: 'border border-slate-300 bg-[repeating-linear-gradient(135deg,#e2e8f0_0_2px,#fff_2px_4px)]',
 };
 
-/** Pet pločica: jedan radni dan = jedna pločica, iste boje kao matrica. */
-function DayStrip({ days, hours, today }: { days: string[]; hours: number[]; today: string }) {
-  const label = days.map((d, i) => `${formatWeekday(d)}: ${d === today && hours[i] === 0 ? 'danas, još ništa' : formatHours(hours[i])}`).join('; ');
+/** Pet pločica: jedan radni dan = jedna pločica, iste boje kao matrica. Odsutnost = šrafirana pločica. */
+function DayStrip({ days, hours, away, today }: { days: string[]; hours: number[]; away: (AbsenceKind | null)[]; today: string }) {
+  const label = days.map((d, i) => `${formatWeekday(d)}: ${
+    hours[i] === 0 && away[i] ? ABSENCE_LABEL[away[i]!].toLowerCase()
+      : d === today && hours[i] === 0 ? 'danas, još ništa' : formatHours(hours[i])}`).join('; ');
   return (
     <span className="flex items-end gap-[3px] shrink-0" role="img" aria-label={`Zadnjih 5 radnih dana – ${label}`}>
       {days.map((d, i) => {
         const v = hours[i];
+        const a = away[i];
+        if (v === 0 && a) {
+          return (
+            <span key={d} title={`${formatWeekday(d)}: ${ABSENCE_LABEL[a]} (${ABSENCE_CODE[a]})`}
+              className={cn('w-2.5 h-3.5 rounded-[3px] border', ABSENCE_TONE[a].swatch)} />
+          );
+        }
         const kind = d === today && v < NORM_PER_DAY ? 'today' : v >= NORM_PER_DAY ? 'full' : v > 0 ? 'part' : 'miss';
         return (
           <span key={d} title={`${formatWeekday(d)}: ${formatHours(v)}`}

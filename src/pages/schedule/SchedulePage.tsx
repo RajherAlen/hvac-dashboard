@@ -33,7 +33,10 @@ import { assignmentState, DAY_CAPACITY, KIND_LABEL, type AssignmentState } from 
 import { isWorkday, isStaff } from '../../lib/period';
 import { dueText } from '../../lib/service';
 import { cn, todayISO } from '../../lib/utils';
-import type { Profile } from '../../types';
+import type { Absence, Profile } from '../../types';
+import { useWorkCalendar } from '../../hooks/useAbsences';
+import { ABSENCE_LABEL } from '../../lib/workCalendar';
+import { ABSENCE_TONE } from '../../components/absences/absenceStyle';
 
 const cellId = (emp: string, day: string) => `c:${emp}|${day}`;
 
@@ -57,6 +60,7 @@ export function SchedulePage() {
   const unscheduledQ = useUnscheduledOrders();
   const board = useServiceBoard();
   const { data: allLogs = [] } = useWorkLogs({ startDate: start, endDate: end });
+  const { cal } = useWorkCalendar(start, end);
   const move = useMoveAssignment();
   const addAsg = useAddAssignment();
   const removeAsg = useRemoveAssignment();
@@ -152,6 +156,9 @@ export function SchedulePage() {
     const over = e.over ? String(e.over.id) : null;
     if (!over?.startsWith('c:')) return;
     const [emp, day] = over.slice(2).split('|');
+    // Odsutnost se ne blokira (plan se može promijeniti), ali se upozori
+    const away = cal.absenceOf(emp, day);
+    if (away) toast.warning(`${nameOf(emp).split(' ')[0]} je taj dan odsutan (${ABSENCE_LABEL[away.kind].toLowerCase()})`);
     const id = String(e.active.id);
     if (id.startsWith('a:')) {
       const a = plan.find(x => x.id === id.slice(2));
@@ -171,10 +178,11 @@ export function SchedulePage() {
   if (!dir.isLoading && dir.missingSchema) return <ModuleNotEnabled />;
   if (planQ.data === null) return <NotEnabled />;
 
-  const teamCapacity = staff.length * DAY_CAPACITY;
+  // Kapacitet: samo tko taj dan radi (bez praznika i odobrenih odsutnosti)
+  const teamCapacity = (day: string) => staff.filter(e => cal.expected(e.id, day, 1) > 0).length * DAY_CAPACITY;
   const plannedOn = (day: string) => plan.filter(a => a.day === day).reduce((s, a) => s + Number(a.planned_hours), 0);
   const weekPlanned = (emp: string) => plan.filter(a => a.employee_id === emp).reduce((s, a) => s + Number(a.planned_hours), 0);
-  const weekCapacity = visibleDays.filter(isWorkday).length * DAY_CAPACITY;
+  const weekCapacity = (emp: string) => visibleDays.filter(d => cal.expected(emp, d, 1) > 0).length * DAY_CAPACITY;
 
   const chipFor = (a: PlanAssignment, draggable: boolean) => (
     <AssignmentChip
@@ -267,18 +275,20 @@ export function SchedulePage() {
           {/* Tjedna mreža (desktop) */}
           <section aria-label="Tjedni raspored" className="hidden lg:block bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto relative">
             <div className="grid min-w-[56rem]" style={{
-              gridTemplateColumns: `10rem ${visibleDays.map(d => (isWorkday(d) || weekendBusy(d) ? 'minmax(8.5rem,1fr)' : '4.5rem')).join(' ')}`,
+              gridTemplateColumns: `10rem ${visibleDays.map(d => (isWorkday(d, cal) || weekendBusy(d) ? 'minmax(8.5rem,1fr)' : '4.5rem')).join(' ')}`,
             }}>
               <div className="sticky left-0 z-10 bg-white border-b border-slate-200" />
               {visibleDays.map(d => {
                 const p = plannedOn(d);
-                const wd = isWorkday(d);
+                const wd = isWorkday(d, cal);
+                const info = cal.dayInfo(d);
                 return (
                   <div key={d} className={cn('px-2.5 py-2 border-b border-l border-slate-200', !wd && 'bg-slate-50', d === today && 'bg-blue-50/60')}>
                     <p className={cn('text-xs', d === today ? 'font-bold text-slate-900' : wd ? 'font-medium text-slate-700' : 'text-slate-500')}>
                       {formatWeekdayShort(d)} {formatShort(d)}{d === today && <span className="font-normal text-blue-800"> · danas</span>}
                     </p>
-                    {wd && <p className="text-[11px] text-slate-600 tabular-nums">{short(p)} / {short(teamCapacity)}</p>}
+                    {wd && <p className="text-[11px] text-slate-600 tabular-nums">{short(p)} / {short(teamCapacity(d))}</p>}
+                    {info.type === 'holiday' && <p className="text-[11px] text-slate-500 truncate" title={info.label ?? ''}>{info.label}</p>}
                   </div>
                 );
               })}
@@ -292,15 +302,16 @@ export function SchedulePage() {
                         <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: colors[emp.id] }} aria-hidden="true" />
                         <span className="truncate">{emp.full_name}</span>
                       </p>
-                      <p className={cn('text-xs tabular-nums ml-[18px]', wp > weekCapacity ? 'text-amber-800 font-medium' : 'text-slate-600')}>
-                        {short(wp)} / {short(weekCapacity)}
+                      <p className={cn('text-xs tabular-nums ml-[18px]', wp > weekCapacity(emp.id) ? 'text-amber-800 font-medium' : 'text-slate-600')}>
+                        {short(wp)} / {short(weekCapacity(emp.id))}
                       </p>
                     </div>
                     {visibleDays.map(d => {
                       const items = byCell.get(`${emp.id}|${d}`) ?? [];
-                      const narrow = !isWorkday(d) && !weekendBusy(d);
+                      const narrow = !isWorkday(d, cal) && !weekendBusy(d);
                       return (
                         <DayCell key={d} id={cellId(emp.id, d)} day={d} today={today} narrow={narrow}
+                          workday={isWorkday(d, cal)} absence={cal.absenceOf(emp.id, d)}
                           planned={items.reduce((s, a) => s + Number(a.planned_hours), 0)}
                           actual={actualByCell.get(`${emp.id}|${d}`) ?? 0}
                           label={`${emp.full_name}, ${formatWeekday(d)}`}
@@ -318,24 +329,26 @@ export function SchedulePage() {
 
           {/* Mobitel: dan po dan */}
           <div className="lg:hidden flex flex-col gap-3">
-            {visibleDays.filter(d => isWorkday(d) || weekendBusy(d)).map(d => (
+            {visibleDays.filter(d => isWorkday(d, cal) || weekendBusy(d)).map(d => (
               <section key={d} aria-label={formatWeekday(d)} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                 <div className={cn('flex items-baseline justify-between px-4 py-2.5 border-b border-slate-100', d === today && 'bg-blue-50/60')}>
                   <h2 className={cn('text-sm', d === today ? 'font-bold text-slate-900' : 'font-semibold text-slate-800')}>
                     {formatWeekday(d)}{d === today && <span className="font-normal text-blue-800"> · danas</span>}
                   </h2>
-                  <span className="text-xs text-slate-600 tabular-nums">{short(plannedOn(d))} / {short(teamCapacity)}</span>
+                  <span className="text-xs text-slate-600 tabular-nums">{short(plannedOn(d))} / {short(teamCapacity(d))}</span>
                 </div>
                 <ul className="divide-y divide-slate-100">
                   {staff.map(emp => {
                     const items = byCell.get(`${emp.id}|${d}`) ?? [];
                     const p = items.reduce((s, a) => s + Number(a.planned_hours), 0);
+                    const away = cal.absenceOf(emp.id, d);
                     return (
                       <li key={emp.id} className="px-4 py-2.5">
                         <div className="flex items-center justify-between gap-2 mb-1.5">
                           <p className="flex items-center gap-2 text-sm font-medium text-slate-900">
                             <span className="w-2.5 h-2.5 rounded-full" style={{ background: colors[emp.id] }} aria-hidden="true" />
                             {emp.full_name}
+                            {away && <span className={cn('px-1.5 py-0.5 rounded text-[11px] font-semibold', ABSENCE_TONE[away.kind].approved)}>{ABSENCE_LABEL[away.kind]}</span>}
                           </p>
                           <span className={cn('text-xs tabular-nums', p > DAY_CAPACITY ? 'text-amber-800 font-medium' : 'text-slate-600')}>
                             {short(p)} / {DAY_CAPACITY} h
@@ -375,8 +388,8 @@ export function SchedulePage() {
 }
 
 /** Ćelija tehničar × dan: spremnik kapaciteta uz lijevi rub, nalozi, dodavanje. */
-function DayCell({ id, day, today, narrow, planned, actual, label, onAdd, children }: {
-  id: string; day: string; today: string; narrow: boolean; planned: number; actual: number; label: string;
+function DayCell({ id, day, today, narrow, workday, absence, planned, actual, label, onAdd, children }: {
+  id: string; day: string; today: string; narrow: boolean; workday: boolean; absence: Absence | null; planned: number; actual: number; label: string;
   onAdd: () => void; children: ReactNode;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id });
@@ -385,12 +398,13 @@ function DayCell({ id, day, today, narrow, planned, actual, label, onAdd, childr
   const showActual = day <= today && (actual > 0 || past) && planned > 0;
   const fill = Math.min(planned / DAY_CAPACITY, 1) * 100;
   const actualPos = Math.min(actual / DAY_CAPACITY, 1);
-  const wd = isWorkday(day);
+  const wd = workday;
 
   return (
     <div ref={setNodeRef}
       className={cn('group relative border-b border-l border-slate-100 min-h-28 pl-5 pr-2 py-2 flex flex-col gap-1.5 transition-colors',
-        !wd && 'bg-slate-50/70', day === today && 'bg-blue-50/30', isOver && 'bg-blue-50 ring-2 ring-inset ring-blue-400')}>
+        !wd && 'bg-slate-50/70', day === today && 'bg-blue-50/30', absence && ABSENCE_TONE[absence.kind].approved, isOver && 'bg-blue-50 ring-2 ring-inset ring-blue-400')}>
+      {absence && <span className="text-[11px] font-semibold">{ABSENCE_LABEL[absence.kind]}{planned > 0 && <span className="font-normal"> · sukob s planom</span>}</span>}
       {/* Spremnik: plan puni stupac do 8 h, crtica = upisano */}
       {!narrow && (
         <span aria-hidden="true" className="absolute left-2 top-2.5 bottom-2.5 w-1.5 rounded-full bg-slate-100">

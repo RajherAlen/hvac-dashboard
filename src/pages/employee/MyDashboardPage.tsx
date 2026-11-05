@@ -17,6 +17,7 @@ import {
 import { formatDayLong, formatMonth, formatRange, capitalize } from '../../lib/format-date';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { elapsedWorkdays } from '../../lib/period';
+import { useWorkCalendar } from '../../hooks/useAbsences';
 import { toISODate } from '../../lib/format-date';
 import { eachDayOfInterval, parseISO } from 'date-fns';
 
@@ -28,6 +29,7 @@ export function MyDashboardPage() {
   const today = todayISO();
   const { start: weekStart, end: weekEnd } = getCurrentWeekRange();
   const { start: monthStart, end: monthEnd } = getCurrentMonthRange();
+  const { cal } = useWorkCalendar(monthStart, monthEnd, !!user?.id);
   const last7 = getLast7Days();
 
   const { data: todayLogs = [] } = useWorkLogs({
@@ -54,7 +56,8 @@ export function MyDashboardPage() {
   const todayHours = todayLogs.reduce((s, l) => s + Number(l.hours_worked), 0);
   const weekHours  = weekLogs.reduce((s, l) => s + Number(l.hours_worked), 0);
   const monthHours = monthLogs.reduce((s, l) => s + Number(l.hours_worked), 0);
-  const workdays   = elapsedWorkdays(eachDayOfInterval({ start: parseISO(monthStart), end: parseISO(monthEnd) }).map(toISODate), today);
+  // Prosjek po radnom danu: bez praznika i vlastitih odobrenih odsutnosti
+  const workdays   = elapsedWorkdays(eachDayOfInterval({ start: parseISO(monthStart), end: parseISO(monthEnd) }).map(toISODate), today, cal, user?.id);
   const avgPerDay  = workdays > 0 ? monthHours / workdays : 0;
 
   return (

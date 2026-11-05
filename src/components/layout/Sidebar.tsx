@@ -12,7 +12,9 @@ import {
   Wrench,
   CalendarRange,
   PieChart,
+  CalendarOff,
 } from 'lucide-react';
+import { usePendingAbsences } from '../../hooks/useAbsences';
 import { useClientDirectory } from '../../hooks/useClients';
 import { useAuth } from '../../hooks/useAuth';
 import { useEmployee } from '../../hooks/useEmployees';
@@ -23,7 +25,7 @@ interface SidebarProps {
   onClose?: () => void;
 }
 
-type NavItem = { to: string; icon: typeof Users; label: string };
+type NavItem = { to: string; icon: typeof Users; label: string; badge?: 'pendingAbsences' };
 type NavSection = { title: string; links: NavItem[] };
 
 /** Admin: grupirano po tome što se radi – pregled rada, planiranje posla, matični podaci. */
@@ -40,6 +42,7 @@ const adminSections: NavSection[] = [
     links: [
       { to: '/raspored', icon: CalendarRange, label: 'Raspored' },
       { to: '/servisi', icon: Wrench, label: 'Servisi' },
+      { to: '/odsutnosti', icon: CalendarOff, label: 'Odsutnosti', badge: 'pendingAbsences' },
     ],
   },
   {
@@ -58,6 +61,7 @@ const employeeSections: NavSection[] = [
       { to: '/my/dashboard', icon: LayoutDashboard, label: 'Moja nadzorna ploča' },
       { to: '/my/log', icon: PlusCircle, label: 'Unos rada' },
       { to: '/my/history', icon: History, label: 'Moja povijest' },
+      { to: '/my/odsutnosti', icon: CalendarOff, label: 'Odsutnosti' },
     ],
   },
   {
@@ -75,6 +79,8 @@ export function Sidebar({ onClose }: SidebarProps) {
   const [showProfile, setShowProfile] = useState(false);
   // Klijenti se prikazuju tek kad je migracija pokrenuta
   const { missingSchema } = useClientDirectory();
+  const { data: pending } = usePendingAbsences(role === 'admin');
+  const badges = { pendingAbsences: pending?.length ?? 0 };
   const sections = (role === 'admin' ? adminSections : employeeSections)
     .map(s => ({ ...s, links: s.links.filter(l => !missingSchema || !NEEDS_CLIENTS.includes(l.to)) }))
     .filter(s => s.links.length > 0);
@@ -102,7 +108,7 @@ export function Sidebar({ onClose }: SidebarProps) {
                 {section.title}
               </h2>
               <ul aria-labelledby={headingId} className="space-y-1">
-                {section.links.map(({ to, icon: Icon, label }) => (
+                {section.links.map(({ to, icon: Icon, label, badge }) => (
                   <li key={to}>
                     <NavLink
                       to={to}
@@ -117,7 +123,12 @@ export function Sidebar({ onClose }: SidebarProps) {
                       }
                     >
                       <Icon size={18} aria-hidden="true" />
-                      {label}
+                      <span className="flex-1">{label}</span>
+                      {badge && badges[badge] > 0 && (
+                        <span className="min-w-5 h-5 px-1.5 inline-flex items-center justify-center rounded-full bg-amber-400 text-slate-900 text-xs font-bold tabular-nums">
+                          {badges[badge]}<span className="sr-only"> na čekanju</span>
+                        </span>
+                      )}
                     </NavLink>
                   </li>
                 ))}

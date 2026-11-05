@@ -27,6 +27,8 @@ import { LinkLegacyPage } from './pages/clients/LinkLegacyPage';
 import { ServicesPage } from './pages/services/ServicesPage';
 import { SchedulePage } from './pages/schedule/SchedulePage';
 import { HoursValuePage } from './pages/admin/HoursValuePage';
+import { AbsencesPage } from './pages/admin/AbsencesPage';
+import { MyAbsencesPage } from './pages/employee/MyAbsencesPage';
 
 function Spinner() {
   return (
@@ -89,6 +91,7 @@ function AppRoutes() {
         <Route path="/my/dashboard" element={<MyDashboardPage />} />
         <Route path="/my/log" element={<LogWorkPage />} />
         <Route path="/my/history" element={<MyHistoryPage />} />
+        <Route path="/my/odsutnosti" element={<MyAbsencesPage />} />
         {/* Klijenti – zajednički; tehničar vidi i dodaje, admin uređuje */}
         <Route path="/klijenti" element={<ClientsPage />} />
         <Route path="/klijenti/:id" element={<ClientDetailPage />} />
@@ -98,6 +101,7 @@ function AppRoutes() {
         <Route path="/klijenti/povezivanje" element={<LinkLegacyPage />} />
         <Route path="/servisi" element={<ServicesPage />} />
         <Route path="/raspored" element={<SchedulePage />} />
+        <Route path="/odsutnosti" element={<AbsencesPage />} />
         <Route path="/sati" element={<HoursValuePage />} />
       </Route>
 

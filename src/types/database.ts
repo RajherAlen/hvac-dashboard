@@ -2,6 +2,9 @@ export type DeviceKind = 'split' | 'multisplit' | 'vrf' | 'toplinska_pumpa' | 'k
 export type WorkOrderKind = 'servis' | 'montaza' | 'popravak' | 'dijagnostika' | 'ostalo'
 export type WorkOrderStatus = 'open' | 'done' | 'cancelled'
 export type ServiceCaseStatus = 'due' | 'contacted' | 'scheduled' | 'snoozed' | 'declined' | 'done'
+export type AbsenceKind = 'godisnji' | 'bolovanje' | 'slobodan'
+export type AbsenceStatus = 'pending' | 'approved' | 'rejected' | 'cancelled'
+export type CalendarOverrideKind = 'neradni' | 'radni'
 
 export type Json =
   | string
@@ -360,6 +363,34 @@ export type Database = {
           },
         ]
       }
+      /** Postoji tek nakon migracije 20261111_absences.sql */
+      absences: {
+        Row: {
+          id: string
+          employee_id: string
+          kind: AbsenceKind
+          start_date: string
+          end_date: string
+          status: AbsenceStatus
+          note: string | null
+          requested_by: string | null
+          decided_by: string | null
+          decided_at: string | null
+          decision_note: string | null
+          created_at: string
+        }
+        Insert: Record<string, never>
+        Update: Record<string, never>
+        Relationships: [
+          { foreignKeyName: "absences_employee_id_fkey"; columns: ["employee_id"]; isOneToOne: false; referencedRelation: "profiles"; referencedColumns: ["id"] },
+        ]
+      }
+      calendar_overrides: {
+        Row: { day: string; kind: CalendarOverrideKind; label: string | null }
+        Insert: { day: string; kind: CalendarOverrideKind; label?: string | null }
+        Update: { kind?: CalendarOverrideKind; label?: string | null }
+        Relationships: []
+      }
     }
     Views: {
       device_service_status: {
@@ -373,6 +404,9 @@ export type Database = {
       }
     }
     Functions: {
+      request_absence: { Args: { p_kind: AbsenceKind; p_start: string; p_end: string; p_note?: string | null; p_employee_id?: string | null }; Returns: string }
+      decide_absence: { Args: { p_id: string; p_approve: boolean; p_note?: string | null }; Returns: undefined }
+      cancel_absence: { Args: { p_id: string }; Returns: undefined }
       update_work_log: { Args: { p_id: string; p_values: Json; p_device_ids?: string[] | null; p_is_service?: boolean | null }; Returns: Database['public']['Tables']['work_logs']['Row'] }
       save_work_order: { Args: { p_order: Json; p_assignments: Json; p_device_ids?: string[] }; Returns: string }
       complete_assignment: { Args: { p_assignment: string; p_order_done?: boolean }; Returns: undefined }

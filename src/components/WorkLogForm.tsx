@@ -3,7 +3,9 @@ import { useForm, Controller, useWatch, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
-import { AlertTriangle, MapPin, Plus, X, History } from 'lucide-react';
+import { AlertTriangle, MapPin, Plus, X, History, CalendarOff } from 'lucide-react';
+import { useWorkCalendar } from '../hooks/useAbsences';
+import { ABSENCE_LABEL } from '../lib/workCalendar';
 import { useAddWorkLogs, useUpdateWorkLog, useWorkLogs, useLocationSuggestions } from '../hooks/useWorkLogs';
 import { useClientDirectory, useRecentSites, useWorkLogDevices } from '../hooks/useClients';
 import { useAuth } from '../hooks/useAuth';
@@ -162,6 +164,17 @@ export function WorkLogForm({ editLog, onClose, employeeId, presetSiteId, preset
   const newHours = (items ?? []).reduce((s, it) => s + (parseHours(it?.hours ?? '') ?? 0), 0);
   const projected = alreadyLogged + newHours;
   const overLimit = projected > DAILY_WARN_HOURS;
+  // Praznik ili odobrena odsutnost: samo napomena, unos se ne blokira
+  const { cal } = useWorkCalendar(logDate, logDate, !!logDate);
+  const dayNote = (() => {
+    if (!logDate) return null;
+    const own = targetEmployee === user?.id;
+    const away = targetEmployee ? cal.absenceOf(targetEmployee, logDate) : null;
+    if (away) return `Za ovaj dan ${own ? 'imaš' : 'je'} odobren${away.kind === 'bolovanje' ? 'o' : ''} ${ABSENCE_LABEL[away.kind].toLowerCase()}.`;
+    const info = cal.dayInfo(logDate);
+    if (info.type === 'holiday') return `${info.label} – neradni dan. Rad se i dalje može upisati.`;
+    return null;
+  })();
 
   const fromOrder = (it: FormValues['items'][number]) =>
     it.assignment_id ? { assignment_id: it.assignment_id, order_done: it.order_done } : {};
@@ -221,6 +234,11 @@ export function WorkLogForm({ editLog, onClose, employeeId, presetSiteId, preset
             />
           )}
         </Field>
+        {dayNote && (
+          <p className="-mt-2 flex items-center gap-2 text-sm text-sky-900 bg-sky-50 border border-sky-100 rounded-lg px-3 py-2" role="status">
+            <CalendarOff size={15} className="shrink-0" aria-hidden="true" />{dayNote}
+          </p>
+        )}
 
         {!clientsMode && (
           <datalist id={locationListId}>

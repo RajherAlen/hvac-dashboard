@@ -1,5 +1,6 @@
-import { startOfISOWeek, parseISO, isWeekend, format } from 'date-fns';
+import { startOfISOWeek, parseISO, isWeekend, format, addDays } from 'date-fns';
 import { formatWeekBucket } from './format-date';
+import { holidayName, type WorkCalendar } from './workCalendar';
 import type { WorkLog } from '../types';
 
 export interface Bucket {
@@ -8,30 +9,35 @@ export interface Bucket {
   days: string[];
 }
 
-export function isWorkday(day: string): boolean {
-  return !isWeekend(parseISO(day));
+/**
+ * Radni dan: pon–pet koji nije državni praznik.
+ * S kalendarom (`cal`) uzimaju se u obzir i neradni dani tvrtke.
+ */
+export function isWorkday(day: string, cal?: WorkCalendar): boolean {
+  if (cal) return cal.isWorkday(day);
+  return !isWeekend(parseISO(day)) && !holidayName(day);
 }
 
 /**
- * Broj radnih dana (pon–pet) u periodu koji su već počeli – uključujući danas.
- * Koristi se kao nazivnik za "prosj. sati / dan".
+ * Broj radnih dana u periodu koji su već počeli – uključujući danas.
+ * Koristi se kao nazivnik za "prosj. sati / dan". Uz `employeeId` se izostavljaju i njegove odobrene odsutnosti.
  */
-export function elapsedWorkdays(days: string[], today: string): number {
-  return days.filter(d => d <= today && isWorkday(d)).length;
+export function elapsedWorkdays(days: string[], today: string, cal?: WorkCalendar, employeeId?: string): number {
+  return days.filter(d => d <= today && expectedDay(d, cal, employeeId)).length;
 }
 
 /** Broj radnih dana strogo između dva datuma (bez rubnih dana). */
-export function workdaysBetween(fromExclusive: string, toExclusive: string): number {
+export function workdaysBetween(fromExclusive: string, toExclusive: string, cal?: WorkCalendar, employeeId?: string): number {
   let n = 0;
-  const d = parseISO(fromExclusive);
-  const end = parseISO(toExclusive);
-  d.setDate(d.getDate() + 1);
-  while (d < end) {
-    const wd = d.getDay();
-    if (wd !== 0 && wd !== 6) n++;
-    d.setDate(d.getDate() + 1);
+  for (let d = addDays(parseISO(fromExclusive), 1); format(d, 'yyyy-MM-dd') < toExclusive; d = addDays(d, 1)) {
+    if (expectedDay(format(d, 'yyyy-MM-dd'), cal, employeeId)) n++;
   }
   return n;
+}
+
+function expectedDay(day: string, cal?: WorkCalendar, employeeId?: string): boolean {
+  if (cal && employeeId) return cal.expected(employeeId, day, 1) > 0;
+  return isWorkday(day, cal);
 }
 
 /** Grupira dane u ISO tjedne (pon–ned). Rubni tjedni su odrezani granicama perioda. */

@@ -17,6 +17,7 @@ import type { WorkLog, Profile } from '../types';
 import { formatHours, getLast7Days, todayISO } from '../lib/utils';
 import { formatShort, formatWeekdayShort, formatDayLong, formatRange, capitalize } from '../lib/format-date';
 import { isoWeekBuckets, isWorkday, type Bucket } from '../lib/period';
+import { ABSENCE_CODE, BASE_CALENDAR, type WorkCalendar } from '../lib/workCalendar';
 import { TOTAL_COLOR, employeeColorMap } from '../lib/colors';
 
 interface HoursChartProps {
@@ -42,6 +43,8 @@ interface HoursChartProps {
   maxBarSize?: number;
   /** Planirani sati po zaposleniku i danu (raspored naloga) – crta liniju plana umjesto norme. */
   planByEmpDay?: Record<string, Record<string, number>>;
+  /** Radni kalendar: praznik = kao vikend, odsutni ne ulaze u normu tog dana. */
+  cal?: WorkCalendar;
 }
 
 type Row = {
@@ -57,6 +60,14 @@ type Row = {
   now: number;
   /** Planirani sati vidljivih zaposlenika (null = nema plana za taj dan) */
   plan: number | null;
+  /** Norma za taj dan (bez odsutnih); null = neradni dan ili bez norme */
+  goal: number | null;
+  /** Naziv praznika / neradnog dana */
+  holiday: string | null;
+  /** Odsutni toga dana: "Ivan H. (GO)" */
+  absent: string[];
+  /** Linija norme kad se mijenja po danu (odsutnosti) */
+  goalLine: number | null;
   /** Zadnji (najviši) segment u stogu s vrijednošću > 0 – nosi oznaku zbroja. */
   topSeries: string | null;
   [employeeId: string]: unknown;
@@ -109,6 +120,7 @@ export function HoursChart({
   height = 240,
   maxBarSize = 40,
   planByEmpDay,
+  cal,
 }: HoursChartProps) {
   const titleId = useId();
   const [hidden, setHidden] = useState<Set<string>>(() => new Set());
@@ -124,7 +136,7 @@ export function HoursChart({
 
   const colors = useMemo(() => employeeColorMap(employees), [employees]);
 
-  const { rows, series, visible, ticks, hasFuture, hasNow, norm, hasPlan } = useMemo(() => {
+  const { rows, series, visible, ticks, hasFuture, hasNow, norm, hasPlan, varying } = useMemo(() => {
     const buckets: Bucket[] = groupBy === 'week'
       ? isoWeekBuckets(days)
       : days.map(d => ({ key: d, label: d, days: [d] }));
@@ -136,22 +148,32 @@ export function HoursChart({
     const series = isStacked ? employees.filter(e => (hoursByEmp.get(e.id) ?? 0) > 0 || expected.has(e.id)) : [];
     const visible = series.filter(e => !hidden.has(e.id));
     const visibleIds = new Set(visible.map(e => e.id));
-    const normCount = isStacked ? visible.filter(e => expected.has(e.id)).length : expected.size;
-    const norm = groupBy === 'day' && normPerPerson ? normPerPerson * normCount : 0;
+    const normIds = isStacked ? visible.filter(e => expected.has(e.id)).map(e => e.id) : [...expected];
+    const withNorm = groupBy === 'day' && !!normPerPerson;
+    const c = cal ?? BASE_CALENDAR;
+    const nameOf = new Map(employees.map(e => [e.id, e.full_name ?? '']));
 
     const base = buckets.map(b => {
       const set = new Set(b.days);
       const bucketLogs = logs.filter(l => set.has(l.log_date) && (!isStacked || visibleIds.has(l.employee_id)));
+      const day = b.days[0];
+      const weekend = groupBy === 'day' && !isWorkday(day, cal);
+      const info = groupBy === 'day' ? c.dayInfo(day) : null;
+      const absentIds = groupBy === 'day' ? normIds.filter(id => c.absenceOf(id, day)) : [];
       const row: Row = {
         key: b.key,
         bucket: b,
         total: bucketLogs.reduce((s, l) => s + Number(l.hours_worked), 0),
-        isFuture: b.days[0] > today,
-        isToday: groupBy === 'day' && b.days[0] === today,
-        isWeekend: groupBy === 'day' && !isWorkday(b.days[0]),
+        isFuture: day > today,
+        isToday: groupBy === 'day' && day === today,
+        isWeekend: weekend,
         future: 0,
         now: 0,
         plan: null,
+        goal: withNorm && !weekend ? normPerPerson! * (normIds.length - absentIds.length) : null,
+        holiday: info?.type === 'holiday' ? info.label : null,
+        absent: absentIds.map(id => `${nameOf.get(id) ?? '—'} (${ABSENCE_CODE[c.absenceOf(id, day)!.kind]})`),
+        goalLine: null,
         topSeries: null,
       };
       if (planByEmpDay && groupBy === 'day') {
@@ -168,21 +190,28 @@ export function HoursChart({
     });
 
     const hasPlan = base.some(r => r.plan !== null);
-    // S rasporedom naloga cilj je plan, a ne fiksna norma
-    const target = hasPlan ? 0 : norm;
-    const ticks = niceTicks(Math.max(0, target * 1.1, ...base.map(r => Math.max(r.total, (r.plan ?? 0) * 1.05))));
+    if (hasPlan) for (const r of base) r.goal = null;
+    // S rasporedom naloga cilj je plan, a ne fiksna norma.
+    // Ista norma svaki radni dan → vodoravna linija; različita (odsutnosti) → stepenasta linija po danu.
+    const goals = [...new Set(base.map(r => r.goal).filter((g): g is number => g !== null))];
+    const uniform = goals.length <= 1;
+    const target = !hasPlan && uniform ? goals[0] ?? 0 : 0;
+    const varying = !hasPlan && !uniform;
+    if (varying) for (const r of base) r.goalLine = r.goal;
+    const maxGoal = Math.max(0, ...goals);
+    const ticks = niceTicks(Math.max(0, maxGoal * 1.1, ...base.map(r => Math.max(r.total, (r.plan ?? 0) * 1.05))));
     const top = ticks[ticks.length - 1];
     for (const r of base) {
       if (r.isFuture) r.future = top;
-      if (r.isToday && r.total === 0) r.now = r.plan ?? (target > 0 ? target : top * 0.85);
+      if (r.isToday && r.total === 0) r.now = r.plan ?? (r.goal && r.goal > 0 ? r.goal : top * 0.85);
     }
 
     return {
-      rows: base, series, visible, ticks, norm: target, hasPlan,
+      rows: base, series, visible, ticks, norm: target, hasPlan, varying,
       hasFuture: base.some(r => r.isFuture),
       hasNow: base.some(r => r.now > 0),
     };
-  }, [days, groupBy, logs, employees, isStacked, today, hidden, normPerPerson, normStaffIds, planByEmpDay]);
+  }, [days, groupBy, logs, employees, isStacked, today, hidden, normPerPerson, normStaffIds, planByEmpDay, cal]);
 
   const many = rows.length > 10;
   const total = rows.reduce((s, r) => s + r.total, 0);
@@ -264,7 +293,6 @@ export function HoursChart({
                   series={visible}
                   colors={colors}
                   groupBy={groupBy}
-                  norm={norm}
                 />
               )}
             />
@@ -299,7 +327,7 @@ export function HoursChart({
                       const total = Number(p.value);
                       const x = Number(p.x) + Number(p.width) / 2;
                       const row = rows[Number(p.index)];
-                      const goal = row?.plan ?? (row?.isWeekend ? 0 : norm);
+                      const goal = row?.plan ?? row?.goal ?? 0;
                       const under = goal > 0 && total < goal && !!row && !row.isToday && !row.isFuture;
                       return (
                         <text x={x} y={Number(p.y) - 5} textAnchor="middle" fontSize={many ? 9 : 11} fontWeight={600} fill={under ? NORM_INK : AXIS_INK}>
@@ -328,6 +356,21 @@ export function HoursChart({
             <Bar dataKey={FUTURE_KEY} stackId="a" maxBarSize={maxBarSize} isAnimationActive={false} legendType="none">
               {rows.map(r => <Cell key={r.key} fill={`url(#${titleId}-hatch${r.isWeekend ? '-wk' : ''})`} />)}
             </Bar>
+            {varying && (
+              <Line
+                dataKey="goalLine"
+                name="Norma"
+                type="step"
+                stroke={NORM_COLOR}
+                strokeWidth={1.5}
+                strokeDasharray="6 5"
+                connectNulls={false}
+                dot={false}
+                activeDot={false}
+                isAnimationActive={false}
+                legendType="none"
+              />
+            )}
             {hasPlan && (
               <Line
                 dataKey="plan"
@@ -348,7 +391,7 @@ export function HoursChart({
       </div>
 
       {/* Legenda: samo zaposlenici koji imaju sate u periodu */}
-      {(isStacked || hasFuture || norm > 0 || hasPlan) && (
+      {(isStacked || hasFuture || norm > 0 || varying || hasPlan) && (
         <ul className="flex flex-wrap gap-x-4 gap-y-1.5 mt-3 text-xs text-slate-600" aria-label="Legenda">
           {series.map(emp => (
             <li key={emp.id}>
@@ -387,10 +430,10 @@ export function HoursChart({
               Plan iz rasporeda
             </li>
           )}
-          {norm > 0 && (
+          {(norm > 0 || varying) && (
             <li className="flex items-center gap-1.5 text-slate-600">
               <svg width="18" height="8" aria-hidden="true"><line x1="0" y1="4" x2="18" y2="4" stroke={NORM_COLOR} strokeWidth="1.5" strokeDasharray="4 3" /></svg>
-              Norma ({normPerPerson} h × osoba)
+              Norma ({normPerPerson} h × osoba{varying ? ', bez odsutnih' : ''})
             </li>
           )}
           {hasNow && (
@@ -476,14 +519,17 @@ function AxisTick({
 // ─── Tooltip: svi zaposlenici za taj stupac + ukupno ─────────────────────────
 
 function ChartTooltip({
-  active, row, series, colors, groupBy, norm = 0,
+  active, row, series, colors, groupBy,
 }: {
-  active?: boolean; row?: Row; series: Profile[]; colors: Record<string, string>; groupBy: 'day' | 'week'; norm?: number;
+  active?: boolean; row?: Row; series: Profile[]; colors: Record<string, string>; groupBy: 'day' | 'week';
 }) {
   if (!active || !row) return null;
+  const norm = row.goal ?? 0;
   return (
     <div className="bg-white border border-slate-200 rounded-lg shadow-lg px-3 py-2 text-xs min-w-44">
       <p className="font-semibold text-slate-800 mb-1">{bucketTitle(row.bucket, groupBy)}</p>
+      {row.holiday && <p className="text-slate-600 -mt-0.5 mb-1">{row.holiday} · neradni dan</p>}
+      {row.absent.length > 0 && <p className="text-slate-600 -mt-0.5 mb-1">Odsutni: {row.absent.join(', ')}</p>}
       {row.isFuture ? (
         <p className="text-slate-500">Još nije prošlo</p>
       ) : row.isToday && row.total === 0 ? (

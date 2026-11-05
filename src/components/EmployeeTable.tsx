@@ -7,6 +7,8 @@ import { STATUS_LABEL, type EmployeeStatus } from '../lib/employeeStatus';
 import { formatHours, todayISO, initials, cn } from '../lib/utils';
 import { formatRelative, formatDayLong, capitalize } from '../lib/format-date';
 import { workdaysBetween } from '../lib/period';
+import { useWorkCalendar } from '../hooks/useAbsences';
+import { addDays, format } from 'date-fns';
 
 interface EmployeeTableProps {
   entries: DirectoryEntry[];
@@ -52,6 +54,8 @@ export function EmployeeTable({ entries, logs, isLoading }: EmployeeTableProps) 
   const [showAdmins, setShowAdmins] = useState(false);
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: 'name', dir: 'asc' });
   const today = todayISO();
+  // Odsutnosti zadnjih 60 dana: dani godišnjeg/bolovanja ne broje se kao "bez unosa"
+  const { cal } = useWorkCalendar(format(addDays(new Date(), -60), 'yyyy-MM-dd'), today);
 
   const rows: Row[] = useMemo(() => entries.map(({ emp, isAdmin, status, lastLogDate }) => {
     const own = logs.filter(l => l.employee_id === emp.id);
@@ -62,9 +66,9 @@ export function EmployeeTable({ entries, logs, isLoading }: EmployeeTableProps) 
       todayHours: own.filter(l => l.log_date === today).reduce((s, l) => s + Number(l.hours_worked), 0),
       weekHours: own.reduce((s, l) => s + Number(l.hours_worked), 0),
       lastDate: lastLogDate,
-      staleDays: !isAdmin && status === 'aktivan' && lastLogDate ? workdaysBetween(lastLogDate, today) : 0,
+      staleDays: !isAdmin && status === 'aktivan' && lastLogDate ? workdaysBetween(lastLogDate, today, cal, emp.id) : 0,
     };
-  }), [entries, logs, today]);
+  }), [entries, logs, today, cal]);
 
   const staffRows = rows.filter(r => !r.isAdmin);
   const adminCount = rows.length - staffRows.length;

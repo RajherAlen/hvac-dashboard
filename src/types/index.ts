@@ -42,10 +42,12 @@ export interface WorkLogFormValues {
 export type Client = Tables<'clients'>;
 export type Site = Tables<'sites'>;
 export type Device = Tables<'devices'>;
-export type { DeviceKind, ServiceCaseStatus, WorkOrderKind, WorkOrderStatus } from './database';
+export type { DeviceKind, ServiceCaseStatus, WorkOrderKind, WorkOrderStatus, AbsenceKind, AbsenceStatus, CalendarOverrideKind } from './database';
 export type WorkOrder = Tables<'work_orders'>;
 export type Assignment = Tables<'work_order_assignments'>;
 export type ServiceCase = Tables<'service_cases'>;
+export type Absence = Tables<'absences'>;
+export type CalendarOverride = Tables<'calendar_overrides'>;
 
 export interface SiteWithDevices extends Site {
   devices: Device[];

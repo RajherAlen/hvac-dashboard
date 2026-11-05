@@ -98,3 +98,15 @@
 .rdp-hvac .rdp-disabled {
   opacity: 0.35;
 }
+/* Odsutnosti: praznik prigušen, postojeća odsutnost šrafirana */
+.rdp-absence .rdp-holiday:not(.rdp-selected) .rdp-day_button {
+  color: #64748b;
+  background: #f1f5f9;
+}
+.rdp-absence .rdp-taken:not(.rdp-selected) .rdp-day_button {
+  background: repeating-linear-gradient(135deg, #e0f2fe 0 3px, #f8fafc 3px 6px);
+  color: #0c4a6e;
+}
+.rdp-absence .rdp-weekend:not(.rdp-selected) .rdp-day_button {
+  color: #94a3b8;
+}

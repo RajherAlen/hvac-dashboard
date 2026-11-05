@@ -23,6 +23,7 @@ import { Field } from '../../components/ui/form';
 import { DatePicker } from '../../components/ui/DatePicker';
 import { formatHours, todayISO, initials, pluralHr } from '../../lib/utils';
 import { elapsedWorkdays, sumHours, isStaff } from '../../lib/period';
+import { useWorkCalendar } from '../../hooks/useAbsences';
 import { errorMessage } from '../../lib/errors';
 import { toISODate } from '../../lib/format-date';
 import { subDays } from 'date-fns';
@@ -49,10 +50,11 @@ export function AdminEmployeeDetailPage() {
   const { data: logs = [], isLoading: logsLoading } = useWorkLogs({ employeeId: id, startDate: period.start, endDate: period.end });
   const { data: todayLogs = [] } = useWorkLogs({ employeeId: id, startDate: today, endDate: today });
   const { data: totalLogCount } = useWorkLogCount(id);
+  const { cal } = useWorkCalendar(period.start, period.end);
 
   const todayHours = sumHours(todayLogs);
   const periodHours = sumHours(logs);
-  const workdays = elapsedWorkdays(period.days, todayHours > 0 ? today : toISODate(subDays(new Date(), 1)));
+  const workdays = elapsedWorkdays(period.days, todayHours > 0 ? today : toISODate(subDays(new Date(), 1)), cal, id);
   const avgPerDay = workdays > 0 ? periodHours / workdays : 0;
   const isActiveToday = todayHours > 0;
   const chartGroupBy = period.days.length > 31 ? 'week' : 'day';
