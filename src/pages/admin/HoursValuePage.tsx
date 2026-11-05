@@ -17,6 +17,7 @@ import { BucketEntriesDialog } from '../../components/BucketEntriesDialog';
 import { TimeRibbon } from '../../components/hours/TimeRibbon';
 import { HoursRankChart } from '../../components/hours/HoursRankChart';
 import { HoursTable } from '../../components/hours/HoursTable';
+import { DataReadiness } from '../../components/hours/DataReadiness';
 import {
   KIND_KEYS, KIND_KEY_LABEL, breakdownCsv, buildBreakdown, downloadText, nodeRate,
   type BreakdownNode, type GroupBy, type KindKey, type PlanItem,
@@ -114,6 +115,17 @@ export function HoursValuePage() {
         </div>
       </header>
 
+      {/* Prvo: što nedostaje da stranica pokaže zaradu po poslu. Dok ovo stoji, brojke ispod su nepotpune; nestaje kad je sve spremno. */}
+      {!isLoading && (
+        <DataReadiness
+          totalHours={all.total.hours}
+          noOrderHours={hasOrders ? all.total.byKind.none : all.total.hours}
+          pricedHours={all.total.pricedHours}
+          hasOrders={hasOrders}
+          hasPrice={hasPrice}
+        />
+      )}
+
       {q.isError && (
         <p role="alert" className="text-sm text-red-900 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
           Sati se nisu učitali: {errorMessage(q.error)}. Osvježite stranicu.
@@ -155,18 +167,11 @@ export function HoursValuePage() {
                 )}
               </p>
             )}
-            {hasOrders && !hasPrice && (
-              <p className="mt-1 text-sm text-slate-600">
-                Za vrijednost posla pokrenite migraciju <code className="px-1 py-0.5 bg-slate-100 rounded text-xs">20261110_work_order_value.sql</code>.
-              </p>
-            )}
-            {hasOrders ? (
+            {hasOrders && (
               <div className="mt-4 sm:mt-5">
                 <TimeRibbon byKind={all.total.byKind} total={all.total.hours} active={kind}
                   onToggle={k => setParam('kind', kind === k ? null : k)} />
               </div>
-            ) : (
-              <p className="mt-3 text-sm text-slate-600">Vrsta posla vidi se kad se rad upisuje na nalog iz rasporeda.</p>
             )}
           </>
         )}
