@@ -82,6 +82,12 @@ export const ABSENCE_CODE: Record<AbsenceKind, string> = {
   slobodan: 'SD',
 };
 
+/**
+ * Sati koji se priznaju za praznik ili odobrenu odsutnost (pon–pet).
+ * Takav dan ima cilj = priznato, pa je uvijek ispunjen i ne ruši normu.
+ */
+export const CREDIT_HOURS = 4;
+
 export interface WorkCalendar {
   dayInfo(day: string): DayInfo;
   isWorkday(day: string): boolean;
@@ -89,8 +95,10 @@ export interface WorkCalendar {
   absenceOf(employeeId: string, day: string): Absence | null;
   /** Zahtjev na čekanju koji pokriva taj dan */
   pendingOf(employeeId: string, day: string): Absence | null;
-  /** Očekivani sati: 0 za vikend, praznik i odobrenu odsutnost, inače norma */
+  /** Očekivani sati stvarnog rada: 0 za vikend, praznik i odobrenu odsutnost, inače norma */
   expected(employeeId: string, day: string, norm: number): number;
+  /** Priznati sati: CREDIT_HOURS za praznik ili odobrenu odsutnost koji padaju na pon–pet, inače 0 */
+  credit(employeeId: string, day: string): number;
   /** Radni dani u rasponu (uključivo), bez obzira na odsutnosti */
   workdaysIn(start: string, end: string): string[];
   /** Praznici i neradni dani u rasponu (samo oni koji padaju na pon–pet) */
@@ -141,6 +149,11 @@ export function buildWorkCalendar({
     absenceOf: (emp, day) => find(emp, day, 'approved'),
     pendingOf: (emp, day) => find(emp, day, 'pending'),
     expected: (emp, day, norm) => (isWorkday(day) && !find(emp, day, 'approved') ? norm : 0),
+    credit: (emp, day) => {
+      const type = dayInfo(day).type;
+      if (type === 'weekend') return 0;
+      return type === 'holiday' || find(emp, day, 'approved') ? CREDIT_HOURS : 0;
+    },
     workdaysIn: (start, end) => eachDay(start, end).filter(isWorkday),
     holidaysIn: (start, end) => eachDay(start, end)
       .map(day => ({ day, info: dayInfo(day) }))

@@ -12,7 +12,7 @@ import { inputClass } from '../ui/styles';
 import { useAbsences, useCalendarOverrides, useRequestAbsence } from '../../hooks/useAbsences';
 import { usePlan } from '../../hooks/useWorkOrders';
 import { useWorkLogs } from '../../hooks/useWorkLogs';
-import { ABSENCE_LABEL, buildWorkCalendar } from '../../lib/workCalendar';
+import { ABSENCE_LABEL, CREDIT_HOURS, buildWorkCalendar } from '../../lib/workCalendar';
 import { formatShort, formatShortRange, toISODate } from '../../lib/format-date';
 import { cn, formatHours, pluralHr } from '../../lib/utils';
 import type { AbsenceKind, Profile } from '../../types';
@@ -143,6 +143,7 @@ export function AbsenceDialog({ onClose, asAdmin, employeeId: fixedEmployee, emp
               <>
                 <strong className="font-semibold text-slate-900">{workdays.length} {pluralHr(workdays.length, 'radni dan', 'radna dana', 'radnih dana')}</strong>
                 {' '}· {formatShortRange(start, end)}
+                {workdays.length > 0 && <> · priznaje se {formatHours(workdays.length * CREDIT_HOURS)}</>}
                 {holidays.length > 0 && (
                   <span className="text-slate-600"> · {holidays.map(h => `${h.label} ${formatShort(h.day)}`).join(', ')} se ne {holidays.length > 1 ? 'broje' : 'broji'}</span>
                 )}

@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import type { Absence, Profile, WorkLog } from '../types';
 import { formatShort, formatWeekdayShort, formatDayLong, capitalize } from '../lib/format-date';
-import { ABSENCE_CODE, ABSENCE_LABEL, BASE_CALENDAR, type WorkCalendar } from '../lib/workCalendar';
+import { ABSENCE_CODE, ABSENCE_LABEL, BASE_CALENDAR, CREDIT_HOURS, type WorkCalendar } from '../lib/workCalendar';
 import { cn, formatHours } from '../lib/utils';
 import { ABSENCE_TONE, HOLIDAY_CELL } from './absences/absenceStyle';
 import { AbsenceCellPopover } from './absences/AbsenceCellPopover';
@@ -58,9 +58,12 @@ export function StaffDayMatrix({ logs, staff, days, today, colors, normPerDay = 
   const get = (emp: string, day: string) => hours.get(`${emp}|${day}`) ?? 0;
   const planned = (emp: string, day: string) => plan?.get(`${emp}|${day}`) ?? 0;
   const hasPlan = !!plan && plan.size > 0;
-  /** Cilj ćelije: plan iz rasporeda, a bez plana norma radnog dana. Odobrena odsutnost = 0. */
+  /** Priznati sati (praznik / odobrena odsutnost); računaju se tek kad dan dođe */
+  const credited = (emp: string, day: string) => (day <= today ? cal.credit(emp, day) : 0);
+  /** Cilj ćelije: praznik/odsutnost = priznati sati; inače plan iz rasporeda, a bez plana norma radnog dana. */
   const target = (emp: string, day: string) => {
-    if (cal.absenceOf(emp, day)) return 0;
+    const c = cal.credit(emp, day);
+    if (c > 0) return c;
     const p = planned(emp, day);
     if (p > 0) return p;
     return hasPlan ? 0 : cal.isWorkday(day) ? normPerDay : 0;
@@ -70,7 +73,9 @@ export function StaffDayMatrix({ logs, staff, days, today, colors, normPerDay = 
     if (v === 0) {
       if (cal.absenceOf(emp, day)) return 'absence';
       if (cal.pendingOf(emp, day)) return 'pending';
-      if (cal.dayInfo(day).type === 'holiday' && goal === 0) return 'holiday';
+      if (cal.dayInfo(day).type === 'holiday') return 'holiday';
+    } else if (cal.credit(emp, day) > 0) {
+      return 'full'; // rad upisan na praznik / tijekom odsutnosti – dan je ionako priznat
     }
     if (day > today) return 'future';
     if (day === today) return goal > 0 && v >= goal ? 'full' : 'today';
@@ -83,10 +88,11 @@ export function StaffDayMatrix({ logs, staff, days, today, colors, normPerDay = 
   const cellLabel = (name: string, emp: string, day: string, v: number, kind: CellKind) => {
     const d = capitalize(formatDayLong(day));
     const abs = cal.absenceOf(emp, day);
-    if (kind === 'absence' && abs) return `${name}, ${d}: ${absenceText(abs, false)}`;
+    const cr = `, priznato ${formatHours(CREDIT_HOURS)}`;
+    if (kind === 'absence' && abs) return `${name}, ${d}: ${absenceText(abs, false)}${cr}`;
     const pend = cal.pendingOf(emp, day);
     if (kind === 'pending' && pend) return `${name}, ${d}: ${absenceText(pend, true)}`;
-    if (kind === 'holiday') return `${name}, ${d}: ${cal.dayInfo(day).label ?? 'praznik'}`;
+    if (kind === 'holiday') return `${name}, ${d}: ${cal.dayInfo(day).label ?? 'praznik'}${cr}`;
     if (kind === 'future') return `${name}, ${d}: još nije prošlo`;
     if (kind === 'today' && v === 0) return `${name}, ${d}: danas, još nema unosa`;
     if (kind === 'weekend' && v === 0) return `${name}, ${d}: ${cal.isWorkday(day) ? 'ništa planirano' : 'vikend'}`;
@@ -94,7 +100,7 @@ export function StaffDayMatrix({ logs, staff, days, today, colors, normPerDay = 
     return `${name}, ${d}: ${formatHours(v)}${abs ? `, upisano tijekom odsutnosti (${ABSENCE_LABEL[abs.kind].toLowerCase()})` : ''}`;
   };
 
-  const colTotals = days.map(d => staff.reduce((s, e) => s + get(e.id, d), 0));
+  const colTotals = days.map(d => staff.reduce((s, e) => s + get(e.id, d) + credited(e.id, d), 0));
   const grand = colTotals.reduce((a, b) => a + b, 0);
   const holidayCols = days.filter(d => cal.dayInfo(d).type === 'holiday');
   const anyAbsence = staff.some(e => days.some(d => cal.absenceOf(e.id, d) || cal.pendingOf(e.id, d)));
@@ -103,7 +109,7 @@ export function StaffDayMatrix({ logs, staff, days, today, colors, normPerDay = 
     <div>
       <div className="relative overflow-x-auto -mx-1 px-1">
         <table className={cn('w-full border-separate', dense ? 'border-spacing-[2px]' : 'border-spacing-1')}>
-          <caption className="sr-only">Sati po zaposleniku i danu. {hasPlan ? 'Ćelija pokazuje upisano / planirano.' : `Norma ${normPerDay} h po radnom danu.`} Praznici i odsutnosti se ne računaju u normu.</caption>
+          <caption className="sr-only">Sati po zaposleniku i danu. {hasPlan ? 'Ćelija pokazuje upisano / planirano.' : `Norma ${normPerDay} h po radnom danu.`} Praznik i odobrena odsutnost priznaju se kao {CREDIT_HOURS} h.</caption>
           <thead>
             <tr>
               <th scope="col" className="sticky left-0 z-10 bg-white text-left text-xs font-medium text-slate-600 pr-2">Zaposlenik</th>
@@ -136,11 +142,12 @@ export function StaffDayMatrix({ logs, staff, days, today, colors, normPerDay = 
           </thead>
           <tbody>
             {staff.map(emp => {
-              const sum = days.reduce((s, d) => s + get(emp.id, d), 0);
+              // Ukupno osobe: upisani rad + priznati sati za praznike i odsutnosti
+              const sum = days.reduce((s, d) => s + get(emp.id, d) + credited(emp.id, d), 0);
               // Postotak cilja (plan ili norma) za dane koji su završili; danas se ne računa dok traje
               const pastDays = days.filter(d => d < today);
               const goalSum = pastDays.reduce((s, d) => s + target(emp.id, d), 0);
-              const doneSum = pastDays.filter(d => target(emp.id, d) > 0).reduce((s, d) => s + get(emp.id, d), 0);
+              const doneSum = pastDays.filter(d => target(emp.id, d) > 0).reduce((s, d) => s + get(emp.id, d) + credited(emp.id, d), 0);
               const pct = goalSum > 0 ? Math.round((doneSum / goalSum) * 100) : null;
               return (
                 <tr key={emp.id}>
@@ -162,13 +169,13 @@ export function StaffDayMatrix({ logs, staff, days, today, colors, normPerDay = 
                     let text: string;
                     let tone: string;
                     if (kind === 'absence' && abs) {
-                      text = dense ? ABSENCE_CODE[abs.kind] : ABSENCE_LABEL[abs.kind].split(' ')[0];
+                      text = dense ? `${ABSENCE_CODE[abs.kind]} ${compact(CREDIT_HOURS, false)}` : `${ABSENCE_LABEL[abs.kind].split(' ')[0]} ${compact(CREDIT_HOURS, true)}`;
                       tone = ABSENCE_TONE[abs.kind].approved;
                     } else if (kind === 'pending' && pend) {
                       text = `${ABSENCE_CODE[pend.kind]}?`;
                       tone = ABSENCE_TONE[pend.kind].pending;
                     } else {
-                      text = kind === 'holiday' ? (dense ? '' : 'praznik')
+                      text = kind === 'holiday' ? (dense ? compact(CREDIT_HOURS, false) : `praznik ${compact(CREDIT_HOURS, true)}`)
                         : kind === 'future' || (kind === 'weekend' && v === 0) ? '·'
                         : kind === 'today' && v === 0 ? '—' : compact(v, !dense && p === 0);
                       if (p > 0 && kind !== 'holiday') text = kind === 'future' ? compact(p, false) : `${compact(v, false)}/${compact(p, false)}`;
@@ -245,7 +252,10 @@ export function StaffDayMatrix({ logs, staff, days, today, colors, normPerDay = 
           </li>
         )}
         {anyAbsence && (
-          <li className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-white border border-dashed border-sky-400" aria-hidden="true" />zahtjev na čekanju</li>
+          <li className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-white border border-dashed border-sky-400" aria-hidden="true" />zahtjev na čekanju (još se ne priznaje)</li>
+        )}
+        {(anyAbsence || holidayCols.length > 0) && (
+          <li className="text-slate-700">Praznik i odobrena odsutnost = {CREDIT_HOURS} h odrađeno</li>
         )}
         {holidayCols.length > 0 && (
           <li className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-slate-100 border border-slate-200" aria-hidden="true" />

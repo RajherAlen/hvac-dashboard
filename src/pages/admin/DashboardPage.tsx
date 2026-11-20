@@ -10,7 +10,7 @@ import { CalendarOff } from 'lucide-react';
 import { useWorkCalendar, usePendingAbsences } from '../../hooks/useAbsences';
 import { AbsenceDialog } from '../../components/absences/AbsenceDialog';
 import { ABSENCE_TONE } from '../../components/absences/absenceStyle';
-import { ABSENCE_CODE, ABSENCE_LABEL, type WorkCalendar } from '../../lib/workCalendar';
+import { ABSENCE_CODE, ABSENCE_LABEL, CREDIT_HOURS, type WorkCalendar } from '../../lib/workCalendar';
 import { StatCard, type StatDelta } from '../../components/StatCard';
 import { HoursChart } from '../../components/HoursChart';
 import { StaffDayMatrix } from '../../components/StaffDayMatrix';
@@ -109,14 +109,14 @@ export function AdminDashboardPage() {
   const loggedTodayIds  = new Set(todayLogs.map(l => l.employee_id));
   const activeToday     = activeStaff.filter(e => loggedTodayIds.has(e.id)).length;
 
-  // Popunjenost norme: završeni radni dani (danas se ne broji dok traje) × aktivni zaposlenici × 8 h,
-  // bez praznika, neradnih dana i odobrenih odsutnosti
+  // Popunjenost norme: završeni dani (danas se ne broji dok traje) × aktivni zaposlenici.
+  // Radni dan = 8 h; praznik i odobrena odsutnost = cilj 4 h, a 4 h je i priznato (dan je uvijek ispunjen).
   const normUpTo     = endDate < today ? endDate : toISODate(addDays(parseISO(today), -1));
   const normWorkdays = elapsedWorkdays(periodDays, normUpTo, cal);
-  const normDays     = periodDays.filter(d => d <= normUpTo && cal.isWorkday(d));
-  const normHours    = activeStaff.reduce((s, e) => s + normDays.reduce((t, d) => t + cal.expected(e.id, d, NORM_PER_DAY), 0), 0);
-  const absenceDays  = activeStaff.reduce((s, e) => s + normDays.filter(d => cal.absenceOf(e.id, d)).length, 0);
-  const doneHours    = sumHours(periodLogs.filter(l => l.log_date <= normUpTo));
+  const normDays     = periodDays.filter(d => d <= normUpTo);
+  const creditHours  = activeStaff.reduce((s, e) => s + normDays.reduce((t, d) => t + cal.credit(e.id, d), 0), 0);
+  const normHours    = activeStaff.reduce((s, e) => s + normDays.reduce((t, d) => t + cal.expected(e.id, d, NORM_PER_DAY), 0), 0) + creditHours;
+  const doneHours    = sumHours(periodLogs.filter(l => l.log_date <= normUpTo)) + creditHours;
   const normPct      = normHours > 0 ? Math.round((doneHours / normHours) * 100) : null;
 
   // Plan iz rasporeda: po zaposleniku i danu
@@ -169,7 +169,7 @@ export function AdminDashboardPage() {
   const missingPrev = expectedPrev.filter(e => !cal.absenceOf(e.emp.id, prevDay));
   const absentPrev = expectedPrev.filter(e => cal.absenceOf(e.emp.id, prevDay));
   const daysNote = `${normWorkdays} ${pluralHr(normWorkdays, 'radni dan', 'radna dana', 'radnih dana')}`
-    + (absenceDays > 0 ? `, ${absenceDays} ${pluralHr(absenceDays, 'dan', 'dana', 'dana')} odsutnosti` : '');
+    + (creditHours > 0 ? `, ${formatHours(creditHours)} priznato za praznike i odsutnosti` : '');
   const pendingCount = pendingAbsences?.length ?? 0;
 
   return (
@@ -267,7 +267,7 @@ export function AdminDashboardPage() {
             <h2 id="matrix-title" className="text-sm font-semibold text-slate-800">
               {view === 'week' ? 'Tjedni pregled po zaposleniku' : 'Mjesečni pregled po zaposleniku'}
             </h2>
-            <span className="text-xs text-slate-600">Norma {NORM_PER_DAY} h po radnom danu · praznici i odsutnosti se ne broje</span>
+            <span className="text-xs text-slate-600">Norma {NORM_PER_DAY} h po radnom danu · praznik i odsutnost = {CREDIT_HOURS} h</span>
           </div>
           {pendingCount > 0 && (
             <Link to="/odsutnosti"
