@@ -1,7 +1,10 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Search, X, PlusCircle, ChevronRight, AlertTriangle, CalendarClock, Link2, Building2 } from 'lucide-react';
-import { useClientDirectory, useDeviceServiceStatus, useLastVisitBySite } from '../../hooks/useClients';
+import { toast } from 'sonner';
+import { Search, X, PlusCircle, ChevronRight, AlertTriangle, CalendarClock, Link2, Building2, Trash2 } from 'lucide-react';
+import { useClientDirectory, useDeleteClient, useDeviceServiceStatus, useLastVisitBySite } from '../../hooks/useClients';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
+import { errorMessage } from '../../lib/errors';
 import { useAuth } from '../../hooks/useAuth';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { ClientFormDialog } from '../../components/clients/ClientForms';
@@ -26,6 +29,8 @@ export function ClientsPage() {
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
   const [creating, setCreating] = useState(false);
+  const [deleting, setDeleting] = useState<{ c: ClientWithSites; sites: number; devices: number } | null>(null);
+  const del = useDeleteClient();
   const navigate = useNavigate();
   const today = todayISO();
 
@@ -152,7 +157,15 @@ export function ClientsPage() {
           </div>
         ) : (
           <ul className="divide-y divide-slate-100">
-            {visible.map(r => <ClientRow key={r.c.id} {...r} />)}
+            {visible.map(r => (
+              <ClientRow key={r.c.id} {...r}
+                onDelete={isAdmin && r.c.archived_at ? () => {
+                  del.reset();
+                  // Arhivirani klijent: brojimo i arhivirane objekte i uređaje – brišu se svi
+                  const allSites = r.c.sites ?? [];
+                  setDeleting({ c: r.c, sites: allSites.length, devices: allSites.reduce((n, s) => n + (s.devices?.length ?? 0), 0) });
+                } : undefined} />
+            ))}
           </ul>
         )}
       </div>
@@ -161,13 +174,35 @@ export function ClientsPage() {
         <ClientFormDialog onClose={() => setCreating(false)}
           onCreated={id => navigate(`/klijenti/${id}?uredaj=1`)} />
       )}
+
+      <ConfirmDialog
+        open={!!deleting}
+        onOpenChange={o => { if (!o) setDeleting(null); }}
+        title={deleting ? `Trajno obrisati klijenta ${deleting.c.name}?` : ''}
+        description={deleting ? (
+          <>
+            Briše se i {deleting.sites} {pluralHr(deleting.sites, 'objekt', 'objekta', 'objekata')} te {deleting.devices} {pluralHr(deleting.devices, 'uređaj', 'uređaja', 'uređaja')}.
+            Upisani sati ostaju, ali više nisu povezani s klijentom. <strong className="font-semibold text-slate-800">Ovo se ne može poništiti.</strong>
+          </>
+        ) : ''}
+        confirmText={deleting?.c.name}
+        confirmLabel="Obriši trajno"
+        error={del.error ? errorMessage(del.error) : null}
+        onConfirm={async () => {
+          if (!deleting) return;
+          await del.mutateAsync(deleting.c.id);
+          toast.success('Klijent obrisan', { description: deleting.c.name });
+        }}
+      />
     </div>
   );
 }
 
-function ClientRow({ c, sites, devices, worst, lastVisit, needsReview }: {
+function ClientRow({ c, sites, devices, worst, lastVisit, needsReview, onDelete }: {
   c: ClientWithSites; sites: ClientWithSites['sites']; devices: unknown[];
   worst: { state: ServiceState; days: number | null }; lastVisit: string | null; needsReview: boolean;
+  /** Samo u Arhivi (admin): trajno brisanje */
+  onDelete?: () => void;
 }) {
   const first = sites[0];
   const where = first ? siteAddress(first) + (sites.length > 1 ? ` i još ${sites.length - 1}` : '') : 'Nema objekata';
@@ -178,9 +213,9 @@ function ClientRow({ c, sites, devices, worst, lastVisit, needsReview }: {
       : null;
 
   return (
-    <li>
+    <li className="flex items-center">
       <Link to={`/klijenti/${c.id}`}
-        className="group grid grid-cols-[minmax(0,1fr)_auto] md:grid-cols-[minmax(0,2fr)_minmax(0,1.4fr)_auto_20px] gap-x-4 gap-y-1 items-center px-4 md:px-5 py-3 hover:bg-slate-50 focus-visible:outline-offset-[-2px]">
+        className="group flex-1 min-w-0 gridgrid-cols-[minmax(0,1fr)_auto] md:grid-cols-[minmax(0,2fr)_minmax(0,1.4fr)_auto_20px] gap-x-4 gap-y-1 items-center px-4 md:px-5 py-3 hover:bg-slate-50 focus-visible:outline-offset-[-2px]">
         <div className="min-w-0">
           <p className="flex items-center gap-2 text-sm font-medium text-slate-900">
             <span className="truncate">{c.name}</span>
@@ -202,6 +237,12 @@ function ClientRow({ c, sites, devices, worst, lastVisit, needsReview }: {
         </div>
         <ChevronRight size={16} aria-hidden="true" className="hidden md:block text-slate-400 group-hover:text-slate-600" />
       </Link>
+      {onDelete && (
+        <button type="button" onClick={onDelete} aria-label={`Trajno obriši klijenta ${c.name}`} title="Obriši trajno"
+          className="mr-2 md:mr-3 shrink-0 inline-flex items-center gap-1.5 min-h-11 sm:min-h-9 px-3 text-sm font-medium text-red-700 hover:bg-red-50 rounded-lg">
+          <Trash2 size={15} aria-hidden="true" /> <span className="hidden sm:inline">Obriši</span>
+        </button>
+      )}
     </li>
   );
 }

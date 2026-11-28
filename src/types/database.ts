@@ -477,6 +477,7 @@ export type Database = {
       complete_assignment: { Args: { p_assignment: string; p_order_done?: boolean }; Returns: undefined }
       refresh_service_cases: { Args: { p_horizon_days?: number }; Returns: number }
       add_work_logs: { Args: { items: Json }; Returns: string[] }
+      delete_client: { Args: { p_id: string }; Returns: Json }
       create_site_quick: {
         Args: { p_client_id: string | null; p_client_name: string | null; p_client_kind: string | null; p_address: string; p_city: string | null; p_label: string | null }
         Returns: Json

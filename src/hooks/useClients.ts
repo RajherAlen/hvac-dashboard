@@ -254,6 +254,29 @@ export function useSetEntityFlags() {
   });
 }
 
+/** Trajno brisanje arhiviranog klijenta s objektima i uređajima (admin, migracija 20261117). */
+export function useDeleteClient() {
+  const invalidate = useInvalidate();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      try {
+        return await rpcResult<{ sites: number; devices: number }>(supabase.rpc('delete_client', { p_id: id }));
+      } catch (err) {
+        if (/could not find the function|delete_client/i.test(err instanceof Error ? err.message : '')) {
+          throw new Error('Brisanje klijenata još nije uključeno – pokrenite migraciju 20261117_delete_client.sql.');
+        }
+        throw err;
+      }
+    },
+    onSuccess: () => {
+      invalidate();
+      client.invalidateQueries({ queryKey: ['work_orders'] });
+      client.invalidateQueries({ queryKey: ['service_cases'] });
+    },
+  });
+}
+
 /** Brzo dodavanje s terena: postojeći ili novi klijent + novi objekt. */
 export function useCreateSiteQuick() {
   const invalidate = useInvalidate();
