@@ -13,7 +13,7 @@ import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { FormActions, FormError } from '../../components/ui/form';
 import { inputClass } from '../../components/ui/styles';
 import {
-  REQUEST_FORM_PATH, REQUEST_KIND_LABEL, REQUEST_STATUS_LABEL, REQUEST_TO_ORDER_KIND, requestDeviceText, requestOrderNotes,
+  REQUEST_FORM_PATH, REQUEST_LINK_VERSION, REQUEST_KIND_LABEL, REQUEST_STATUS_LABEL, REQUEST_TO_ORDER_KIND, requestDeviceText, requestOrderNotes,
 } from '../../lib/requests';
 import { siteAddress } from '../../lib/clients';
 import { normalizePhone } from '../../lib/service';
@@ -157,7 +157,7 @@ export function RequestsPage() {
 // ─── Link za klijente ────────────────────────────────────────────────────────
 
 function FormLinkCard() {
-  const url = `${window.location.origin}${REQUEST_FORM_PATH}`;
+  const url = `${window.location.origin}${REQUEST_FORM_PATH}?v=${REQUEST_LINK_VERSION}`;
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(url);
