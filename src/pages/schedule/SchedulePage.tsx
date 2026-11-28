@@ -395,7 +395,7 @@ export function SchedulePage() {
    * Sadržaj ćelije tehničara: kartice naloga kojima je voditelj ili jedini; nalozi ekipe
    * (u prikazu po ekipama) i tuđe kartice samo kao iscrtkane trake zauzetosti.
    */
-  const cellContent = (empId: string, day: string, draggable: boolean, withTeams = byTeams) => {
+  const cellContent = (empId: string, day: string, draggable: boolean, withTeams = byTeams, hideTeamBands = false) => {
     const items = byCell.get(`${empId}|${day}`) ?? [];
     const cards: ReactNode[] = [];
     const bands = new Map<string, { who: string; whoFull: string; list: PlanAssignment[] }>();
@@ -405,6 +405,8 @@ export function SchedulePage() {
       if (withTeams && crew.team) band ={ key: `t:${crew.team.id}`, who: crew.team.name, whoFull: `ekipa ${crew.team.name}` };
       else if (crew.items.length > 1 && crew.lead !== empId) band = { key: crew.lead, who: firstName(nameOf(crew.lead)), whoFull: nameOf(crew.lead) };
       if (band) {
+        // Mobitel: nalog ekipe je već prikazan na kartici ekipe iznad članova
+        if (hideTeamBands && band.key.startsWith('t:')) continue;
         if (!bands.has(band.key)) bands.set(band.key, { who: band.who, whoFull: band.whoFull, list: [] });
         bands.get(band.key)!.list.push(a);
       } else {
@@ -514,6 +516,39 @@ export function SchedulePage() {
     );
   };
 
+  const mobileAdd = (onClick: () => void, label: string) => (
+    <button type="button" onClick={onClick} aria-label={label}
+      className="w-full min-h-10 inline-flex items-center justify-center gap-1 text-sm text-blue-700 border border-dashed border-slate-300 rounded-lg hover:bg-blue-50">
+      <Plus size={14} aria-hidden="true" /> Dodaj
+    </button>
+  );
+
+  /** Mobitel: tehničar u danu. Član ekipe vidi samo svoje naloge – nalozi ekipe su na kartici ekipe iznad. */
+  const mobilePerson = (emp: Profile, d: string, indented: boolean) => {
+    const items = byCell.get(`${emp.id}|${d}`) ?? [];
+    const p = items.reduce((s, a) => s + Number(a.planned_hours), 0);
+    const away = cal.absenceOf(emp.id, d);
+    return (
+      <li key={emp.id} className={cn('px-4 py-2.5', indented && 'pl-7 bg-slate-50/60')}>
+        <div className="flex items-center justify-between gap-2 mb-1.5">
+          <p className="flex items-center gap-2 text-sm font-medium text-slate-900 min-w-0">
+            {indented && <span className="text-slate-400 -ml-3" aria-hidden="true">└</span>}
+            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: colors[emp.id] }} aria-hidden="true" />
+            <span className="truncate">{emp.full_name}</span>
+            {away && <span className={cn('px-1.5 py-0.5 rounded text-[11px] font-semibold shrink-0', ABSENCE_TONE[away.kind].approved)}>{ABSENCE_LABEL[away.kind]}</span>}
+          </p>
+          <span className={cn('text-xs tabular-nums shrink-0', p > DAY_CAPACITY ? 'text-amber-800 font-medium' : 'text-slate-600')}>
+            {short(p)} / {DAY_CAPACITY} h
+          </span>
+        </div>
+        <div className="space-y-1.5">
+          {cellContent(emp.id, d, false, byTeams, true)}
+          {mobileAdd(() => setCreating({ employee_id: emp.id, day: d }), `Dodaj nalog: ${emp.full_name}, ${formatWeekday(d)}`)}
+        </div>
+      </li>
+    );
+  };
+
   const activeItem = dragging ? describe(dragging) : null;
 
   return (
@@ -531,10 +566,10 @@ export function SchedulePage() {
         <div className="flex flex-col sm:flex-row sm:items-center gap-2">
           {crewsQ.data != null && (
             teams.length > 0 ? (
-              <div role="radiogroup" aria-label="Način prikaza" className="hidden lg:grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-lg">
+              <div role="radiogroup" aria-label="Način prikaza" className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-lg">
                 {([['ekipe', 'Po ekipama'], ['zaposlenici', 'Po zaposlenicima']] as const).map(([v, l]) => (
                   <button key={v} type="button" role="radio" aria-checked={view === v} onClick={() => setView(v)}
-                    className={cn('px-3 min-h-8 text-sm font-medium rounded-md whitespace-nowrap',
+                    className={cn('px-3 min-h-10 sm:min-h-8 text-sm font-medium rounded-md whitespace-nowrap',
                       view === v ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900')}>
                     {l}
                   </button>
@@ -646,33 +681,38 @@ export function SchedulePage() {
                   <span className="text-xs text-slate-600 tabular-nums">{short(plannedOn(d))} / {short(teamCapacity(d))}</span>
                 </div>
                 <ul className="divide-y divide-slate-100">
-                  {staff.map(emp => {
-                    const items = byCell.get(`${emp.id}|${d}`) ?? [];
-                    const p = items.reduce((s, a) => s + Number(a.planned_hours), 0);
-                    const away = cal.absenceOf(emp.id, d);
+                  {teamRows.map(({ t, members }) => {
+                    const list = teamCrews(t.id, d);
+                    const away = t.members.filter(m => cal.absenceOf(m, d));
                     return (
-                      <li key={emp.id} className="px-4 py-2.5">
-                        <div className="flex items-center justify-between gap-2 mb-1.5">
-                          <p className="flex items-center gap-2 text-sm font-medium text-slate-900">
-                            <span className="w-2.5 h-2.5 rounded-full" style={{ background: colors[emp.id] }} aria-hidden="true" />
-                            {emp.full_name}
-                            {away && <span className={cn('px-1.5 py-0.5 rounded text-[11px] font-semibold', ABSENCE_TONE[away.kind].approved)}>{ABSENCE_LABEL[away.kind]}</span>}
-                          </p>
-                          <span className={cn('text-xs tabular-nums', p > DAY_CAPACITY ? 'text-amber-800 font-medium' : 'text-slate-600')}>
-                            {short(p)} / {DAY_CAPACITY} h
-                          </span>
-                        </div>
-                        <div className="space-y-1.5">
-                          {cellContent(emp.id, d, false, false)}
-                          <button type="button" onClick={() => setCreating({ employee_id: emp.id, day: d })}
-                            className="w-full min-h-10 inline-flex items-center justify-center gap-1 text-sm text-blue-700 border border-dashed border-slate-300 rounded-lg hover:bg-blue-50"
-                            aria-label={`Dodaj nalog: ${emp.full_name}, ${formatWeekday(d)}`}>
-                            <Plus size={14} aria-hidden="true" /> Dodaj
-                          </button>
-                        </div>
-                      </li>
+                      <Fragment key={t.id}>
+                        <li className="px-4 py-2.5 bg-blue-50/60">
+                          <div className="flex items-center justify-between gap-2 mb-1.5">
+                            <p className="flex items-center gap-1.5 text-sm font-semibold text-slate-900 min-w-0">
+                              <span className="text-[10px] font-bold tracking-wide text-blue-800 bg-blue-100 rounded px-1.5 py-0.5">EKIPA</span>
+                              <span className="truncate">{t.name}</span>
+                              <span className="flex -space-x-1 ml-1">
+                                {t.members.map(m => <PersonAvatar key={m} name={nameOf(m)} color={colors[m]} size="xs" title={nameOf(m)} />)}
+                              </span>
+                            </p>
+                            <span className="text-xs tabular-nums text-slate-600 shrink-0">{short(list.reduce((s, c) => s + crewHours(c), 0))}</span>
+                          </div>
+                          {away.length > 0 && (
+                            <p className="mb-1.5 text-[11px] font-medium text-violet-800">Odsutni: {away.map(m => firstName(nameOf(m))).join(', ')}</p>
+                          )}
+                          <div className="space-y-1.5">
+                            {list.map(c => chipFor(c, false))}
+                            {mobileAdd(() => setCreating({ crew_id: t.id, day: d }), `Dodaj nalog: ekipa ${t.name}, ${formatWeekday(d)}`)}
+                          </div>
+                        </li>
+                        {members.map(emp => mobilePerson(emp, d, true))}
+                      </Fragment>
                     );
                   })}
+                  {byTeams && looseStaff.length > 0 && (
+                    <li className="px-4 pt-2.5 pb-1.5 text-xs font-semibold text-slate-600 bg-slate-50">Bez ekipe</li>
+                  )}
+                  {looseStaff.map(emp => mobilePerson(emp, d, false))}
                 </ul>
               </section>
             ))}
