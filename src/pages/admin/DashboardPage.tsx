@@ -26,6 +26,7 @@ import { BucketEntriesDialog } from '../../components/BucketEntriesDialog';
 import { LogLocation } from '../../components/clients/LogLocation';
 import { ServiceDueCard } from '../../components/clients/ServiceDueCard';
 import { WaitingListCard } from '../../components/orders/WaitingListCard';
+import { NewRequestsBanner } from '../../components/requests/NewRequestsBanner';
 import type { Bucket } from '../../lib/period';
 import type { AbsenceKind, WorkLogWithEmployee } from '../../types';
 import { usePeriod } from '../../hooks/usePeriod';
@@ -194,6 +195,8 @@ export function AdminDashboardPage() {
           </div>
         </div>
       </div>
+
+      <NewRequestsBanner />
 
       {/* KPI */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">

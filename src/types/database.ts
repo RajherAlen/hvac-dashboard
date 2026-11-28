@@ -5,6 +5,8 @@ export type ServiceCaseStatus = 'due' | 'contacted' | 'scheduled' | 'snoozed' | 
 export type AbsenceKind = 'godisnji' | 'bolovanje' | 'slobodan'
 export type AbsenceStatus = 'pending' | 'approved' | 'rejected' | 'cancelled'
 export type CalendarOverrideKind = 'neradni' | 'radni'
+export type RequestKind = 'servis' | 'popravak' | 'montaza' | 'ostalo'
+export type RequestStatus = 'new' | 'accepted' | 'done' | 'rejected'
 
 export type Json =
   | string
@@ -401,6 +403,33 @@ export type Database = {
         Update: { name?: string }
         Relationships: []
       }
+      service_requests: {
+        Row: {
+          id: string
+          full_name: string
+          phone: string
+          email: string | null
+          address: string
+          city: string | null
+          device_kind: DeviceKind | null
+          device_brand: string | null
+          device_model: string | null
+          request_kind: RequestKind
+          description: string | null
+          preferred_time: string | null
+          status: RequestStatus
+          client_id: string | null
+          site_id: string | null
+          device_id: string | null
+          work_order_id: string | null
+          handled_by: string | null
+          handled_at: string | null
+          created_at: string
+        }
+        Insert: Record<string, never>
+        Update: { status?: RequestStatus; work_order_id?: string | null }
+        Relationships: []
+      }
       crews: {
         Row: {
           id: string
@@ -442,6 +471,8 @@ export type Database = {
       cancel_absence: { Args: { p_id: string }; Returns: undefined }
       update_work_log: { Args: { p_id: string; p_values: Json; p_device_ids?: string[] | null; p_is_service?: boolean | null }; Returns: Database['public']['Tables']['work_logs']['Row'] }
       save_work_order: { Args: { p_order: Json; p_assignments: Json; p_device_ids?: string[] }; Returns: string }
+      submit_service_request: { Args: { p: Json }; Returns: Json }
+      accept_service_request: { Args: { p_id: string; p_client_id?: string | null; p_site_id?: string | null; p_device_id?: string | null }; Returns: Json }
       save_crew: { Args: { p_crew: Json; p_members: string[] }; Returns: string }
       complete_assignment: { Args: { p_assignment: string; p_order_done?: boolean }; Returns: undefined }
       refresh_service_cases: { Args: { p_horizon_days?: number }; Returns: number }

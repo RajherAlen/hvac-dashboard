@@ -30,6 +30,9 @@ import { HoursValuePage } from './pages/admin/HoursValuePage';
 import { AbsencesPage } from './pages/admin/AbsencesPage';
 import { CrewsPage } from './pages/admin/CrewsPage';
 import { MyAbsencesPage } from './pages/employee/MyAbsencesPage';
+import { RequestsPage } from './pages/admin/RequestsPage';
+import { ServiceRequestPage } from './pages/public/ServiceRequestPage';
+import { REQUEST_FORM_PATH } from './lib/requests';
 
 function Spinner() {
   return (
@@ -78,6 +81,8 @@ function AppRoutes() {
     <Routes>
       <Route path="/login" element={loginRedirect ? <Navigate to={loginRedirect} replace /> : <LoginPage />} />
       <Route path="/accept-invite" element={<AcceptInvitePage />} />
+      {/* Javna forma za klijente – bez prijave */}
+      <Route path={REQUEST_FORM_PATH} element={<ServiceRequestPage />} />
       <Route path="/" element={<RootRedirect />} />
 
       {/* Admin */}
@@ -101,6 +106,7 @@ function AppRoutes() {
       <Route element={<RequireAuth requiredRole="admin"><AppShell /></RequireAuth>}>
         <Route path="/klijenti/povezivanje" element={<LinkLegacyPage />} />
         <Route path="/servisi" element={<ServicesPage />} />
+        <Route path="/zahtjevi" element={<RequestsPage />} />
         <Route path="/raspored" element={<SchedulePage />} />
         <Route path="/ekipe" element={<CrewsPage />} />
         <Route path="/odsutnosti" element={<AbsencesPage />} />

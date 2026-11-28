@@ -34,6 +34,7 @@ export interface OrderPreset {
   device_ids?: string[];
   kind?: WorkOrderKind;
   title?: string;
+  notes?: string;
   service_case_id?: string | null;
   /** Nalog se dodjeljuje ekipi (npr. „+” u redu ekipe u rasporedu) */
   crew_id?: string;
@@ -50,7 +51,7 @@ export function OrderFormDialog({ order, preset, onClose, onSaved }: {
   preset?: OrderPreset;
   onClose: () => void;
   /** Nakon spremanja: prvi dan dodjele (npr. da raspored prijeđe na taj tjedan) */
-  onSaved?: (firstDay?: string) => void;
+  onSaved?: (firstDay?: string, orderId?: string) => void;
 }) {
   const save = useSaveOrder();
   const dir = useClientDirectory();
@@ -65,7 +66,7 @@ export function OrderFormDialog({ order, preset, onClose, onSaved }: {
   const [devices, setDevices] = useState<string[]>(order?.work_order_devices.map(d => d.device_id) ?? preset?.device_ids ?? []);
   const [title, setTitle] = useState(order?.title ?? preset?.title ?? KIND_DEFAULTS[initialKind].title);
   const [titleTouched, setTitleTouched] = useState(!!order || !!preset?.title);
-  const [notes, setNotes] = useState(order?.notes ?? '');
+  const [notes, setNotes] = useState(order?.notes ?? preset?.notes ?? '');
   const [estimate, setEstimate] = useState(hoursToInput(Number(order?.estimate_hours ?? KIND_DEFAULTS[initialKind].hours)));
   const [price, setPrice] = useState(moneyToInput(order?.price));
   const [rows, setRows] = useState<Row[]>(() => {
@@ -177,7 +178,7 @@ export function OrderFormDialog({ order, preset, onClose, onSaved }: {
     if (Object.keys(errs).length) return;
 
     try {
-      await save.mutateAsync({
+      const savedId = await save.mutateAsync({
         id: order?.id,
         site_id: realSite,
         kind,
@@ -200,7 +201,7 @@ export function OrderFormDialog({ order, preset, onClose, onSaved }: {
         }
       }
       onClose();
-      onSaved?.([...parsed].map(a => a.day).sort()[0]);
+      onSaved?.([...parsed].map(a => a.day).sort()[0], savedId);
     } catch { /* FormError */ }
   };
 

@@ -15,8 +15,10 @@ import {
   CalendarOff,
   UsersRound,
   Sparkles,
+  Inbox,
 } from 'lucide-react';
 import { usePendingAbsences } from '../../hooks/useAbsences';
+import { useServiceRequests } from '../../hooks/useServiceRequests';
 import { useClientDirectory } from '../../hooks/useClients';
 import { useAuth } from '../../hooks/useAuth';
 import { useEmployee } from '../../hooks/useEmployees';
@@ -29,7 +31,7 @@ interface SidebarProps {
   onWhatsNew?: () => void;
 }
 
-type NavItem = { to: string; icon: typeof Users; label: string; badge?: 'pendingAbsences' };
+type NavItem = { to: string; icon: typeof Users; label: string; badge?: 'pendingAbsences' | 'newRequests' };
 type NavSection = { title: string; links: NavItem[] };
 
 /** Admin: grupirano po tome što se radi – pregled rada, planiranje posla, matični podaci. */
@@ -44,6 +46,7 @@ const adminSections: NavSection[] = [
   {
     title: 'Planiranje',
     links: [
+      { to: '/zahtjevi', icon: Inbox, label: 'Zahtjevi', badge: 'newRequests' },
       { to: '/raspored', icon: CalendarRange, label: 'Raspored' },
       { to: '/ekipe', icon: UsersRound, label: 'Ekipe' },
       { to: '/servisi', icon: Wrench, label: 'Servisi' },
@@ -76,7 +79,7 @@ const employeeSections: NavSection[] = [
 ];
 
 /** Stranice koje ovise o migraciji za klijente. */
-const NEEDS_CLIENTS = ['/klijenti', '/servisi', '/raspored', '/ekipe', '/sati'];
+const NEEDS_CLIENTS = ['/klijenti', '/servisi', '/raspored', '/ekipe', '/sati', '/zahtjevi'];
 
 export function Sidebar({ onClose, onWhatsNew }: SidebarProps) {
   const { role, user, signOut } = useAuth();
@@ -85,7 +88,11 @@ export function Sidebar({ onClose, onWhatsNew }: SidebarProps) {
   // Klijenti se prikazuju tek kad je migracija pokrenuta
   const { missingSchema } = useClientDirectory();
   const { data: pending } = usePendingAbsences(role === 'admin');
-  const badges = { pendingAbsences: pending?.length ?? 0 };
+  const { data: requests } = useServiceRequests(role === 'admin');
+  const badges = {
+    pendingAbsences: pending?.length ?? 0,
+    newRequests: requests?.filter(r => r.status === 'new').length ?? 0,
+  };
   const sections = (role === 'admin' ? adminSections : employeeSections)
     .map(s => ({ ...s, links: s.links.filter(l => !missingSchema || !NEEDS_CLIENTS.includes(l.to)) }))
     .filter(s => s.links.length > 0);
