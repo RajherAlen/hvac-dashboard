@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Check, Plus } from 'lucide-react';
 import { useClientDirectory } from '../../hooks/useClients';
-import { DEVICE_KIND_LABEL } from '../../lib/clients';
+import { deviceKindLabel } from '../../lib/clients';
 import { cn } from '../../lib/utils';
 import { DeviceFormDialog } from './ClientForms';
 
@@ -21,7 +21,7 @@ export function DevicePicker({ siteId, value, onChange, labelId }: {
     <div role="group" aria-labelledby={labelId} className="flex flex-wrap gap-1.5">
       {devices.map(d => {
         const on = value.includes(d.id);
-        const name = [d.brand, d.model].filter(Boolean).join(' ') || DEVICE_KIND_LABEL[d.kind];
+        const name = [d.brand, d.model].filter(Boolean).join(' ') || deviceKindLabel(d);
         return (
           <button key={d.id} type="button" aria-pressed={on} onClick={() => toggle(d.id)}
             className={cn('inline-flex items-center gap-1.5 min-h-10 sm:min-h-8 px-2.5 py-1 text-sm rounded-lg border text-left',

@@ -1,6 +1,6 @@
 import { differenceInCalendarDays, parseISO } from 'date-fns';
 import type { Device, ServiceCaseStatus } from '../types';
-import { DEVICE_KIND_LABEL } from './clients';
+import { deviceKindLabel } from './clients';
 import { formatNumeric, formatWeekday } from './format-date';
 import { pluralHr } from './utils';
 
@@ -17,7 +17,7 @@ export const CASE_STATUS_LABEL: Record<ServiceCaseStatus, string> = {
 };
 
 export function deviceDisplayName(d: Pick<Device, 'brand' | 'model' | 'kind' | 'placement'>): string {
-  const name = [d.brand, d.model].filter(Boolean).join(' ') || DEVICE_KIND_LABEL[d.kind];
+  const name = [d.brand, d.model].filter(Boolean).join(' ') || deviceKindLabel(d);
   return d.placement ? `${name}, ${d.placement}` : name;
 }
 
@@ -64,6 +64,8 @@ export function serviceMessage(opts: {
     ? 'vaše uređaje'
     : kinds.length === 1 && kinds[0] === 'plamenik'
       ? opts.devices.length === 1 ? 'vaš plamenik' : 'vaše plamenike'
+      : kinds.length === 1 && kinds[0] === 'pec_pelet'
+        ? opts.devices.length === 1 ? 'vašu peć na pelet' : 'vaše peći na pelet'
       : kinds.length === 1 && kinds[0] === 'kotao'
         ? opts.devices.length === 1 ? 'vaš kotao' : 'vaše kotlove'
       : kinds.every(k => ['split', 'multisplit', 'vrf'].includes(k))

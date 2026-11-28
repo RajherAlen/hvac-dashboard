@@ -1,6 +1,6 @@
 import { AlertTriangle, CalendarClock, Clock } from 'lucide-react';
 import type { Device } from '../../types';
-import { DEVICE_KIND_LABEL, serviceState, type ServiceState } from '../../lib/clients';
+import { deviceKindLabel, serviceState, type ServiceState } from '../../lib/clients';
 import { formatNumeric, formatRelative } from '../../lib/format-date';
 import { cn, todayISO, pluralHr } from '../../lib/utils';
 
@@ -18,8 +18,8 @@ interface Props {
  * Ispod pločice jedna traka stanja servisa.
  */
 export function DeviceNameplate({ device, service, onOpen, static: isStatic }: Props) {
-  const title = [device.brand, device.model].filter(Boolean).join(' ') || DEVICE_KIND_LABEL[device.kind];
-  const sub = [DEVICE_KIND_LABEL[device.kind], device.placement].filter(Boolean).join(', ');
+  const title = [device.brand, device.model].filter(Boolean).join(' ') || deviceKindLabel(device);
+  const sub = [deviceKindLabel(device), device.placement].filter(Boolean).join(', ');
   const st = serviceState(service?.next, todayISO());
   const capacity = device.capacity_kw != null ? `${String(device.capacity_kw).replace('.', ',')} kW` : null;
   const gas = [device.refrigerant, capacity].filter(Boolean).join(' / ');

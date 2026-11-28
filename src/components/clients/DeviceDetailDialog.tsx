@@ -7,7 +7,7 @@ import { DeviceNameplate } from './DeviceNameplate';
 import { DeviceFormDialog } from './ClientForms';
 import { useDeviceLogs, useSetEntityFlags } from '../../hooks/useClients';
 import { useAuth } from '../../hooks/useAuth';
-import { DEVICE_KIND_LABEL } from '../../lib/clients';
+import { deviceKindLabel } from '../../lib/clients';
 import { capitalize, formatDayLong } from '../../lib/format-date';
 import { formatHours } from '../../lib/utils';
 import { errorMessage } from '../../lib/errors';
@@ -24,13 +24,13 @@ export function DeviceDetailDialog({ device, service, onClose }: {
   const flags = useSetEntityFlags();
   const [editing, setEditing] = useState(false);
   const [archiving, setArchiving] = useState(false);
-  const title = [device.brand, device.model].filter(Boolean).join(' ') || DEVICE_KIND_LABEL[device.kind];
+  const title = [device.brand, device.model].filter(Boolean).join(' ') || deviceKindLabel(device);
 
   if (editing) return <DeviceFormDialog siteId={device.site_id} device={device} onClose={() => { setEditing(false); onClose(); }} />;
 
   return (
     <>
-      <Dialog onClose={onClose} title={title} description={device.placement ?? DEVICE_KIND_LABEL[device.kind]} className="sm:max-w-lg">
+      <Dialog onClose={onClose} title={title} description={device.placement ?? deviceKindLabel(device)} className="sm:max-w-lg">
         <div className="px-5 sm:px-6 py-5 space-y-5">
           <DeviceNameplate device={device} service={service} static />
           {device.notes && <p className="text-sm text-slate-700 whitespace-pre-line">{device.notes}</p>}
@@ -57,13 +57,12 @@ export function DeviceDetailDialog({ device, service, onClose }: {
             )}
           </section>
 
-          {isAdmin && (
-            <div className="flex flex-wrap gap-2 pt-1">
+          <div className="flex flex-wrap gap-2 pt-1">
               <button type="button" onClick={() => setEditing(true)}
                 className="inline-flex items-center gap-1.5 min-h-11 sm:min-h-0 px-3 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg">
                 <Pencil size={14} aria-hidden="true" /> Uredi
               </button>
-              {device.archived_at ? (
+              {!isAdmin ? null : device.archived_at ? (
                 <button type="button"
                   onClick={() => flags.mutate({ table: 'devices', id: device.id, archived: false }, { onSuccess: () => { toast.success('Uređaj vraćen iz arhive'); onClose(); } })}
                   className="inline-flex items-center gap-1.5 min-h-11 sm:min-h-0 px-3 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg">
@@ -75,8 +74,7 @@ export function DeviceDetailDialog({ device, service, onClose }: {
                   <Archive size={14} aria-hidden="true" /> Arhiviraj
                 </button>
               )}
-            </div>
-          )}
+          </div>
         </div>
       </Dialog>
 

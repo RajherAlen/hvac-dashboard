@@ -2,7 +2,7 @@ import { toast } from 'sonner';
 import { formatNumeric, formatDateTime } from './format-date';
 import { formatHours } from './utils';
 import type { WorkLog, Profile, ClientWithSites, WorkLogWithEmployee } from '../types';
-import { DEVICE_KIND_LABEL, siteAddress, CLIENT_KIND_LABEL } from './clients';
+import { deviceKindLabel, siteAddress, CLIENT_KIND_LABEL } from './clients';
 import { KIND_KEYS, KIND_KEY_LABEL, flattenBreakdown, nodeRate, type Breakdown } from './hoursBreakdown';
 import { formatEur, formatRate } from './money';
 
@@ -341,7 +341,7 @@ export function exportClientPdf(
   const deviceName = (id: string) => {
     const d = deviceById.get(id);
     if (!d) return '';
-    return [[d.brand, d.model].filter(Boolean).join(' ') || DEVICE_KIND_LABEL[d.kind], d.serial_number ? `(S/N ${d.serial_number})` : '']
+    return [[d.brand, d.model].filter(Boolean).join(' ') || deviceKindLabel(d), d.serial_number ? `(S/N ${d.serial_number})` : '']
       .filter(Boolean).join(' ');
   };
   const multiSite = client.sites.length > 1;

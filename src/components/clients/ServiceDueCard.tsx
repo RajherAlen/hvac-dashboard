@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, CalendarClock, Wrench, ChevronRight } from 'lucide-react';
 import { useClientDirectory, useDeviceServiceStatus } from '../../hooks/useClients';
-import { DEVICE_KIND_LABEL, serviceState, siteAddress, SERVICE_SOON_DAYS } from '../../lib/clients';
+import { deviceKindLabel, serviceState, siteAddress, SERVICE_SOON_DAYS } from '../../lib/clients';
 import { formatNumeric } from '../../lib/format-date';
 import { cn, pluralHr, todayISO } from '../../lib/utils';
 
@@ -45,7 +45,7 @@ export function ServiceDueCard() {
       </div>
       <ul className="divide-y divide-slate-100">
         {shown.map(x => {
-          const name = [x.device.brand, x.device.model].filter(Boolean).join(' ') || DEVICE_KIND_LABEL[x.device.kind];
+          const name = [x.device.brand, x.device.model].filter(Boolean).join(' ') || deviceKindLabel(x.device);
           const late = x.state === 'overdue';
           return (
             <li key={x.device.id}>

@@ -1,4 +1,4 @@
-export type DeviceKind = 'split' | 'multisplit' | 'vrf' | 'toplinska_pumpa' | 'kotao' | 'plamenik' | 'ventilacija' | 'ostalo'
+export type DeviceKind = 'split' | 'multisplit' | 'vrf' | 'toplinska_pumpa' | 'kotao' | 'plamenik' | 'pec_pelet' | 'ventilacija' | 'ostalo'
 export type WorkOrderKind = 'servis' | 'montaza' | 'popravak' | 'dijagnostika' | 'ostalo'
 export type WorkOrderStatus = 'open' | 'done' | 'cancelled'
 export type ServiceCaseStatus = 'due' | 'contacted' | 'scheduled' | 'snoozed' | 'declined' | 'done'
@@ -138,6 +138,7 @@ export type Database = {
           id: string
           site_id: string
           kind: DeviceKind
+          kind_label: string | null
           brand: string | null
           model: string | null
           serial_number: string | null
@@ -157,6 +158,7 @@ export type Database = {
           id?: string
           site_id: string
           kind?: DeviceKind
+          kind_label?: string | null
           brand?: string | null
           model?: string | null
           serial_number?: string | null
@@ -176,6 +178,7 @@ export type Database = {
           id?: string
           site_id?: string
           kind?: DeviceKind
+          kind_label?: string | null
           brand?: string | null
           model?: string | null
           serial_number?: string | null

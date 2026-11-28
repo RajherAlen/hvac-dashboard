@@ -8,9 +8,15 @@ export const DEVICE_KIND_LABEL: Record<DeviceKind, string> = {
   toplinska_pumpa: 'Toplinska pumpa',
   kotao: 'Kotao',
   plamenik: 'Plamenik',
+  pec_pelet: 'Peć na pelet',
   ventilacija: 'Ventilacija / rekuperator',
   ostalo: 'Ostalo',
 };
+
+/** Naziv vrste uređaja: vlastita vrsta (kind_label, uz 'ostalo') ili standardna. */
+export function deviceKindLabel(d: { kind: DeviceKind; kind_label?: string | null }): string {
+  return d.kind_label?.trim() || DEVICE_KIND_LABEL[d.kind];
+}
 
 export const CLIENT_KIND_LABEL = { private: 'Privatna osoba', company: 'Tvrtka' } as const;
 
