@@ -215,7 +215,7 @@ function ClientRow({ c, sites, devices, worst, lastVisit, needsReview, onDelete 
   return (
     <li className="flex items-center">
       <Link to={`/klijenti/${c.id}`}
-        className="group flex-1 min-w-0 gridgrid-cols-[minmax(0,1fr)_auto] md:grid-cols-[minmax(0,2fr)_minmax(0,1.4fr)_auto_20px] gap-x-4 gap-y-1 items-center px-4 md:px-5 py-3 hover:bg-slate-50 focus-visible:outline-offset-[-2px]">
+        className="group flex-1 min-w-0 grid grid-cols-[minmax(0,1fr)_auto] md:grid-cols-[minmax(0,2fr)_minmax(0,1.4fr)_auto_20px] gap-x-4 gap-y-1 items-center px-4 md:px-5 py-3 hover:bg-slate-50 focus-visible:outline-offset-[-2px]">
         <div className="min-w-0">
           <p className="flex items-center gap-2 text-sm font-medium text-slate-900">
             <span className="truncate">{c.name}</span>
