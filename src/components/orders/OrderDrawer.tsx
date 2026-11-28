@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { CheckCircle2, CircleAlert, Clock, MapPin, Pencil, Phone, RotateCcw, XCircle } from 'lucide-react';
+import { CheckCircle2, CircleAlert, Clock, MapPin, Pencil, Phone, RotateCcw, Users, XCircle } from 'lucide-react';
 import { useOrder, useSetOrderStatus } from '../../hooks/useWorkOrders';
 import { useClientDirectory } from '../../hooks/useClients';
 import { useProfileNames } from '../../hooks/useWorkLogChanges';
@@ -86,7 +86,13 @@ export function OrderDrawer({ orderId, onClose, canManage = true }: { orderId: s
                 )}
               </div>
               {order.work_order_assignments.length === 0 ? (
-                <p className="text-sm text-slate-600">Nalog još nije dodijeljen. Povucite ga u raspored ili uredite nalog.</p>
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 rounded-xl border border-dashed border-slate-300 px-3 py-2.5">
+                  <p className="flex-1 text-sm text-slate-600">Nalog još nije dodijeljen. Dodijelite ga ekipi ili tehničaru, ili ga povucite u raspored.</p>
+                  <button type="button" onClick={() => setEditing(true)}
+                    className="shrink-0 inline-flex items-center justify-center gap-1.5 min-h-10 sm:min-h-9 px-3 text-sm font-medium text-blue-700 border border-blue-200 bg-blue-50 hover:bg-blue-100 rounded-lg">
+                    <Users size={14} aria-hidden="true" /> Dodijeli
+                  </button>
+                </div>
               ) : (
                 <ul className="divide-y divide-slate-100 border border-slate-200 rounded-xl">
                   {[...order.work_order_assignments].sort((a, b) => a.day.localeCompare(b.day)).map(a => {

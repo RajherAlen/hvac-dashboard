@@ -157,6 +157,8 @@ export function SchedulePage() {
 
   // Vikend se prikazuje uzak, osim kad ima naloga
   const weekendBusy = (d: string) => plan.some(a => a.day === d);
+  // Uski stupac: neradni dan bez naloga (današnji dan uvijek pun, da stane "danas")
+  const isNarrow = (d: string) => !isWorkday(d, cal) && !weekendBusy(d) && d !== today;
   const visibleDays = days;
 
   const sensors = useSensors(
@@ -453,7 +455,7 @@ export function SchedulePage() {
         </div>
         {visibleDays.map(d => {
           const items = byCell.get(`${emp.id}|${d}`) ?? [];
-          const narrow = !isWorkday(d, cal) && !weekendBusy(d);
+          const narrow = isNarrow(d);
           return (
             <DayCell key={d} id={cellId(emp.id, d)} day={d} today={today} narrow={narrow} compact={indented}
               workday={isWorkday(d, cal)} absence={cal.absenceOf(emp.id, d)}
@@ -494,7 +496,7 @@ export function SchedulePage() {
         </div>
         {visibleDays.map(d => {
           const list = teamCrews(t.id, d);
-          const narrow = !isWorkday(d, cal) && !weekendBusy(d);
+          const narrow = isNarrow(d);
           const away = t.members.filter(m => cal.absenceOf(m, d));
           return (
             <DayCell key={d} id={teamCellId(t.id, d)} day={d} today={today} narrow={narrow} team
@@ -553,20 +555,20 @@ export function SchedulePage() {
 
   return (
     <div className="px-4 py-4 sm:p-6 flex flex-col gap-3 sm:gap-4">
-      <header className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
-        <div>
+      <header className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 lg:gap-6">
+        <div className="min-w-0 lg:max-w-2xl">
           <h1 className="text-lg sm:text-xl font-bold text-slate-900">Raspored</h1>
-          <p className="text-sm text-slate-600 mt-0.5">
+          <p className="text-sm text-slate-600 mt-0.5 text-pretty">
             {byTeams
               ? 'Povucite nalog na red ekipe (dobivaju ga svi prisutni članovi) ili na tehničara (samo on). Inicijale s kartice povucite na drugog tehničara za zamjenu.'
               : 'Povucite nalog na tehničara i dan. Nalog s više tehničara prikazuje se jednom, a ostalim članovima kao iscrtkana traka.'}
             {' '}Stupac uz rub ćelije pokazuje koliko je dan popunjen (do {DAY_CAPACITY} h).
           </p>
         </div>
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 lg:shrink-0 lg:flex-nowrap">
           {crewsQ.data != null && (
             teams.length > 0 ? (
-              <div role="radiogroup" aria-label="Način prikaza" className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-lg">
+              <div role="radiogroup" aria-label="Način prikaza" className="grid grid-cols-2 sm:inline-grid sm:grid-cols-[auto_auto] gap-1 p-1 bg-slate-100 rounded-lg">
                 {([['ekipe', 'Po ekipama'], ['zaposlenici', 'Po zaposlenicima']] as const).map(([v, l]) => (
                   <button key={v} type="button" role="radio" aria-checked={view === v} onClick={() => setView(v)}
                     className={cn('px-3 min-h-10 sm:min-h-8 text-sm font-medium rounded-md whitespace-nowrap',
@@ -579,9 +581,9 @@ export function SchedulePage() {
               <Link to="/ekipe" className="hidden lg:inline text-sm font-medium text-blue-700 hover:underline whitespace-nowrap">Složi ekipe</Link>
             )
           )}
-          <PeriodStepper period={period} />
+          <PeriodStepper period={period} className="sm:[&>div]:min-h-10" />
           <button type="button" onClick={() => setCreating({})}
-            className="inline-flex items-center justify-center gap-1.5 min-h-11 sm:min-h-0 px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg">
+            className="inline-flex items-center justify-center gap-1.5 min-h-11 sm:min-h-10 px-4 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg whitespace-nowrap shrink-0">
             <PlusCircle size={15} aria-hidden="true" /> Novi nalog
           </button>
         </div>
@@ -643,7 +645,7 @@ export function SchedulePage() {
           {/* Tjedna mreža (desktop) */}
           <section aria-label="Tjedni raspored" className="hidden lg:block bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto relative">
             <div className="grid min-w-[56rem]" style={{
-              gridTemplateColumns: `10rem ${visibleDays.map(d => (isWorkday(d, cal) || weekendBusy(d) ? 'minmax(8.5rem,1fr)' : '4.5rem')).join(' ')}`,
+              gridTemplateColumns: `10rem ${visibleDays.map(d => (isNarrow(d) ? '4.5rem' : 'minmax(8.5rem,1fr)')).join(' ')}`,
             }}>
               <div className="sticky left-0 z-10 bg-white border-b border-slate-200" />
               {visibleDays.map(d => {
@@ -652,8 +654,9 @@ export function SchedulePage() {
                 const info = cal.dayInfo(d);
                 return (
                   <div key={d} className={cn('px-2.5 py-2 border-b border-l border-slate-200', !wd && 'bg-slate-50', d === today && 'bg-blue-50/60')}>
-                    <p className={cn('text-xs', d === today ? 'font-bold text-slate-900' : wd ? 'font-medium text-slate-700' : 'text-slate-500')}>
-                      {formatWeekdayShort(d)} {formatShort(d)}{d === today && <span className="font-normal text-blue-800"> · danas</span>}
+                    <p className={cn('flex items-center gap-1.5 text-xs whitespace-nowrap', d === today ? 'font-bold text-slate-900' : wd ? 'font-medium text-slate-700' : 'text-slate-500')}>
+                      <span className="truncate">{formatWeekdayShort(d)} {formatShort(d)}</span>
+                      {d === today && <span className="shrink-0 px-1.5 py-px rounded text-[10px] font-semibold text-white bg-blue-600">Danas</span>}
                     </p>
                     {wd && <p className="text-[11px] text-slate-600 tabular-nums">{short(p)} / {short(teamCapacity(d))}</p>}
                     {info.type === 'holiday' && <p className="text-[11px] text-slate-500 truncate" title={info.label ?? ''}>{info.label}</p>}

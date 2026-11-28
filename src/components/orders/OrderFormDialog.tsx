@@ -83,10 +83,14 @@ export function OrderFormDialog({ order, preset, onClose, onSaved }: {
   const crewsQ = useCrews();
   const saveCrew = useSaveCrew();
   const crews = crewsQ.data ?? [];
-  const [mode, setMode] = useState<'people' | 'crew'>(!order && preset?.crew_id ? 'crew' : 'people');
+  // null = zadano: Ekipi kad postoje ekipe (osim kad je nalog već dodijeljen ili otvoren s tehničarom)
+  const [modeChoice, setMode] = useState<'people' | 'crew' | null>(!order && preset?.crew_id ? 'crew' : preset?.employee_id ? 'people' : null);
   const [crewId, setCrewId] = useState(preset?.crew_id ?? '');
   const [crewDay, setCrewDay] = useState(preset?.day ?? todayISO());
-  const [crewHours, setCrewHours] = useState(String(KIND_DEFAULTS[initialKind].hours));
+  const [crewHours, setCrewHours] = useState(hoursToInput(Number(order?.estimate_hours ?? KIND_DEFAULTS[initialKind].hours)));
+  // Ekipi se može dodijeliti novi nalog ili nalog s liste čekanja (još bez dodjele)
+  const canPickCrew = crewsQ.data != null && crews.length > 0 && (!order || order.work_order_assignments.length === 0);
+  const mode: 'people' | 'crew' = canPickCrew ? (modeChoice ?? 'crew') : 'people';
   const [memberOverride, setMemberOverride] = useState<Map<string, boolean>>(new Map());
   const { cal } = useWorkCalendar(crewDay, crewDay);
   const crew = crews.find(c => c.id === crewId) ?? null;
@@ -136,17 +140,23 @@ export function OrderFormDialog({ order, preset, onClose, onSaved }: {
     if (title.trim().length < 2) errs.title = 'Upišite kratki opis posla';
     if (!site) errs.site = 'Odaberite objekt ili „Ured / ostalo”';
     const est = parseHours(estimate);
-    if (rows.length === 0 && (est === null || est <= 0)) errs.estimate = 'Upišite procjenu, npr. 2 ili 1,5';
+    if (mode === 'people' && rows.length === 0 && (est === null || est <= 0)) errs.estimate = 'Upišite procjenu, npr. 2 ili 1,5';
     const priceValue = parseMoney(price);
     if (priceValue !== null && (Number.isNaN(priceValue) || priceValue < 0 || priceValue >= 1e8)) errs.price = 'Upišite iznos u eurima, npr. 450 ili 1.250,50';
     let parsed: { id?: string; employee_id: string; day: string; planned_hours: number }[];
+    let queueEst = est;
     if (mode === 'crew') {
       const h = parseHours(crewHours);
-      if (!crew) errs.crew = 'Odaberite ekipu';
-      else if (crewMembers.length === 0) errs.crew = 'Uključite barem jednog člana';
-      if (!crewDay) errs.crewDay = 'Odaberite dan';
       if (h === null || h <= 0 || h > 24) errs.crewHours = 'Između 15 min i 24 h';
-      parsed = crewMembers.map(employee_id => ({ employee_id, day: crewDay, planned_hours: h ?? 0 }));
+      if (!crew) {
+        // Bez ekipe → nalog ide na čekanje, procjena iz "Procjena sati"
+        parsed = [];
+        queueEst = h;
+      } else {
+        if (crewMembers.length === 0) errs.crew = 'Uključite barem jednog člana';
+        if (!crewDay) errs.crewDay = 'Odaberite dan';
+        parsed = crewMembers.map(employee_id => ({ employee_id, day: crewDay, planned_hours: h ?? 0 }));
+      }
     } else {
       parsed = rows.map(r => {
         const h = parseHours(r.hours);
@@ -173,7 +183,7 @@ export function OrderFormDialog({ order, preset, onClose, onSaved }: {
         kind,
         title: title.trim(),
         notes,
-        estimate_hours: parsed.length ? parsed[0].planned_hours : est!,
+        estimate_hours: parsed.length ? parsed[0].planned_hours : queueEst!,
         price: priceValue,
         service_case_id: order?.service_case_id ?? preset?.service_case_id ?? null,
         device_ids: realSite ? devices : [],
@@ -229,7 +239,7 @@ export function OrderFormDialog({ order, preset, onClose, onSaved }: {
 
         <fieldset className="space-y-2">
           <legend className="text-sm font-medium text-slate-700 mb-1">Tko i kada</legend>
-          {!isEdit && crewsQ.data != null && crews.length > 0 && (
+          {canPickCrew && (
             <div role="radiogroup" aria-label="Način dodjele" className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-lg">
               {([['crew', 'Ekipi'], ['people', 'Pojedincima']] as const).map(([v, l]) => (
                 <button key={v} type="button" role="radio" aria-checked={mode === v} onClick={() => setMode(v)}
@@ -247,7 +257,7 @@ export function OrderFormDialog({ order, preset, onClose, onSaved }: {
                   {p => (
                     <select {...p} value={crewId} onChange={e => { setCrewId(e.target.value); setMemberOverride(new Map()); }}
                       className={inputClass(!!errors.crew)}>
-                      <option value="">Odaberite…</option>
+                      <option value="">Bez ekipe (na čekanje)</option>
                       {crewOptions.map(c => (
                         <option key={c.id} value={c.id}>{c.name} — {c.members.map(m => nameOf(m).split(' ')[0]).join(', ')}</option>
                       ))}
@@ -320,8 +330,14 @@ export function OrderFormDialog({ order, preset, onClose, onSaved }: {
             const total = other + sameRows;
             const name = activeStaff.find(e => e.id === r.employee_id)?.full_name.split(' ')[0];
             return (
-              <div key={r.key} role="group" aria-label={`Dodjela ${i + 1}`} className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 space-y-2">
-                <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2 items-start">
+              <div key={r.key} role="group" aria-label={`Dodjela ${i + 1}`} className="relative rounded-xl border border-slate-200 bg-slate-50/60 p-3 space-y-2">
+                {/* Ukloni – u kutu kartice, ne zauzima mjesto u redu polja */}
+                <button type="button" onClick={() => setRows(rs => rs.filter(x => x.key !== r.key))}
+                  className="absolute top-1 right-1 p-2 rounded-lg text-slate-400 hover:text-red-700 hover:bg-red-50"
+                  aria-label={`Ukloni dodjelu ${i + 1}`} title="Ukloni dodjelu">
+                  <X size={15} aria-hidden="true" />
+                </button>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 items-start">
                   <Field label="Tehničar" error={errors[`${r.key}-emp`]}>
                     {p => (
                       <select {...p} value={r.employee_id} onChange={e => updateRow(r.key, { employee_id: e.target.value })}
@@ -334,11 +350,6 @@ export function OrderFormDialog({ order, preset, onClose, onSaved }: {
                   <Field label="Dan" error={errors[`${r.key}-day`]}>
                     {p => <DatePicker {...p} value={r.day} onChange={v => updateRow(r.key, { day: v })} />}
                   </Field>
-                  <button type="button" onClick={() => setRows(rs => rs.filter(x => x.key !== r.key))}
-                    className="sm:mt-6 justify-self-end p-2.5 rounded-lg text-slate-500 hover:text-red-700 hover:bg-red-50"
-                    aria-label={`Ukloni dodjelu ${i + 1}`}>
-                    <X size={16} aria-hidden="true" />
-                  </button>
                 </div>
                 <Field label="Procjena sati" error={errors[`${r.key}-h`]}>
                   {p => (
@@ -411,7 +422,7 @@ export function OrderFormDialog({ order, preset, onClose, onSaved }: {
 
         <FormError message={save.error ? errorMessage(save.error) : null} />
         <FormActions onCancel={onClose} isPending={save.isPending}
-          submitLabel={isEdit ? 'Spremi nalog' : mode === 'crew' ? 'Dodijeli ekipi' : rows.length ? 'Dodaj u raspored' : 'Spremi na čekanje'} pendingLabel="Spremanje…" />
+          submitLabel={mode === 'crew' && crew ? 'Dodijeli ekipi' : isEdit ? 'Spremi nalog' : mode === 'crew' ? 'Spremi na čekanje' : rows.length ? 'Dodaj u raspored' : 'Spremi na čekanje'} pendingLabel="Spremanje…" />
       </form>
     </Dialog>
   );
