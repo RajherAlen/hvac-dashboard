@@ -132,6 +132,8 @@ export function WhatsNewDialog({ onDismiss }: { onDismiss: (permanent: boolean) 
       <D.Portal>
         <D.Overlay className="fixed inset-0 z-50 bg-slate-900/55 data-[state=open]:animate-[fade-in_150ms_ease-out]" />
         <D.Content
+          // Klik pored popupa ga ne zatvara – samo X, Preskoči, ESC ili zadnji korak
+          onInteractOutside={e => e.preventDefault()}
           onOpenAutoFocus={e => {
             // Fokus na "Dalje" umjesto na X u kutu
             const btn = (e.currentTarget as HTMLElement | null)?.querySelector<HTMLElement>('[data-autofocus]');
