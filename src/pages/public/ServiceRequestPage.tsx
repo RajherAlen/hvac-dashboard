@@ -117,7 +117,7 @@ export function ServiceRequestPage() {
               </Field>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Field label="Marka" optional>
-                  {p => <input {...p} maxLength={60} placeholder="npr. Daikin" value={v.device_brand} onChange={e => set('device_brand', e.target.value)} className={inputClass()} />}
+                  {p => <input {...p} maxLength={60} placeholder="npr. Centrometal" value={v.device_brand} onChange={e => set('device_brand', e.target.value)} className={inputClass()} />}
                 </Field>
                 <Field label="Model" optional hint="Piše na naljepnici uređaja">
                   {p => <input {...p} maxLength={80} value={v.device_model} onChange={e => set('device_model', e.target.value)} className={inputClass()} />}
@@ -143,12 +143,12 @@ export function ServiceRequestPage() {
               </div>
               <div data-field="address">
                 <Field label="Ulica i kućni broj" required error={errors.address}>
-                  {p => <input {...p} autoComplete="street-address" maxLength={150} placeholder="npr. Ilica 34" value={v.address} onChange={e => set('address', e.target.value)} className={inputClass(!!errors.address)} />}
+                  {p => <input {...p} autoComplete="street-address" maxLength={150} placeholder="npr. Ul. bana Jelačića 10" value={v.address} onChange={e => set('address', e.target.value)} className={inputClass(!!errors.address)} />}
                 </Field>
               </div>
               <div data-field="city">
                 <Field label="Mjesto" required error={errors.city}>
-                  {p => <input {...p} autoComplete="address-level2" maxLength={80} placeholder="npr. Zagreb" value={v.city} onChange={e => set('city', e.target.value)} className={inputClass(!!errors.city)} />}
+                  {p => <input {...p} autoComplete="address-level2" maxLength={80} placeholder="npr. Đakovo" value={v.city} onChange={e => set('city', e.target.value)} className={inputClass(!!errors.city)} />}
                 </Field>
               </div>
               <Field label="Kada vam odgovara dolazak?" optional hint="Npr. „radnim danom poslije 15 h”">
