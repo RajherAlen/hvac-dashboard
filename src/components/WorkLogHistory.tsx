@@ -4,7 +4,7 @@ import { History, PencilLine, PlusCircle, Trash2, RotateCcw } from 'lucide-react
 import { supabase } from '../lib/supabase';
 import { useClientDirectory } from '../hooks/useClients';
 import { useProfileNames, useWorkLogChanges, type WorkLogChange } from '../hooks/useWorkLogChanges';
-import { DEVICE_KIND_LABEL, siteLabel } from '../lib/clients';
+import { deviceKindLabel, siteLabel } from '../lib/clients';
 import { formatDateTime, formatNumeric, formatRelative } from '../lib/format-date';
 import { cn, formatHours, pluralHr } from '../lib/utils';
 import type { WorkLog } from '../types';
@@ -48,7 +48,7 @@ function deviceName(id: string, dir: Dir): string {
   const hit = dir.deviceIndex.get(id);
   if (!hit) return 'Uklonjen uređaj';
   const d = hit.device;
-  const name = [d.brand, d.model].filter(Boolean).join(' ') || DEVICE_KIND_LABEL[d.kind];
+  const name = [d.brand, d.model].filter(Boolean).join(' ') || deviceKindLabel(d);
   return d.placement ? `${name}, ${d.placement}` : name;
 }
 

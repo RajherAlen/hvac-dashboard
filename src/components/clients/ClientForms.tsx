@@ -6,7 +6,8 @@ import { Dialog } from '../ui/Dialog';
 import { Field, FormActions, FormError } from '../ui/form';
 import { inputClass } from '../ui/styles';
 import { DatePicker } from '../ui/DatePicker';
-import { useSaveClient, useSaveSite, useSaveDevice } from '../../hooks/useClients';
+import { useMemo } from 'react';
+import { useSaveClient, useSaveSite, useSaveDevice, useClientDirectory } from '../../hooks/useClients';
 import { errorMessage } from '../../lib/errors';
 import { DEVICE_KIND_LABEL } from '../../lib/clients';
 import { cn } from '../../lib/utils';
@@ -194,7 +195,7 @@ export function SiteFormDialog({ clientId, site, onClose }: { clientId: string; 
 // ─── Uređaj ─────────────────────────────────────────────────────────────────
 
 const deviceSchema = z.object({
-  kind: z.enum(['split', 'multisplit', 'vrf', 'toplinska_pumpa', 'kotao', 'plamenik', 'ventilacija', 'ostalo']),
+  kind: z.enum(['split', 'multisplit', 'vrf', 'toplinska_pumpa', 'kotao', 'plamenik', 'pec_pelet', 'ventilacija', 'ostalo']),
   brand: z.string().optional(),
   model: z.string().optional(),
   serial_number: z.string().optional(),
@@ -207,8 +208,18 @@ const deviceSchema = z.object({
   service_interval_months: z.preprocess(v => (v === '' ? undefined : v),
     z.coerce.number({ error: 'Upišite broj mjeseci' }).int('Cijeli broj mjeseci').min(0, 'Ne može biti negativno').max(120, 'Najviše 120 mjeseci')),
   notes: z.string().optional(),
+  // Vlastita vrsta: kind = 'ostalo' + kind_label; kind_new = upisuje se nova
+  kind_label: z.string().optional(),
+  kind_new: z.boolean().optional(),
+}).superRefine((v, ctx) => {
+  const len = v.kind_label?.trim().length ?? 0;
+  if (v.kind_new && len < 2) ctx.addIssue({ code: 'custom', path: ['kind_label'], message: 'Upišite naziv vrste' });
+  if (len > 60) ctx.addIssue({ code: 'custom', path: ['kind_label'], message: 'Najviše 60 znakova' });
 });
 type DeviceValues = z.input<typeof deviceSchema>;
+
+const NEW_KIND = '__new__';
+const CUSTOM_PREFIX = 'custom:';
 
 const BRANDS = ['Daikin', 'Mitsubishi Electric', 'Toshiba', 'Panasonic', 'LG', 'Samsung', 'Gree', 'Midea', 'Vivax', 'Fujitsu', 'Viessmann', 'Vaillant'];
 const REFRIGERANTS = ['R32', 'R410A', 'R290', 'R134a', 'R407C'];
@@ -224,8 +235,32 @@ export function DeviceFormDialog({ siteId, device, onClose }: { siteId: string; 
       install_date: device?.install_date ?? '', warranty_until: device?.warranty_until ?? '',
       refrigerant: device?.refrigerant ?? '', capacity_kw: device?.capacity_kw != null ? String(device.capacity_kw).replace('.', ',') : '',
       service_interval_months: device?.service_interval_months ?? 12, notes: device?.notes ?? '',
+      kind_label: device?.kind_label ?? '', kind_new: false,
     },
   });
+
+  // Vlastite vrste koje su već upisane na nekom uređaju – nude se u izborniku
+  const dir = useClientDirectory();
+  const customKinds = useMemo(() => {
+    const byKey = new Map<string, string>();
+    const add = (l: string | null | undefined) => { const t = l?.trim(); if (t && !byKey.has(t.toLowerCase())) byKey.set(t.toLowerCase(), t); };
+    for (const c of dir.clients) for (const s of c.sites ?? []) for (const d of s.devices ?? []) add(d.kind_label);
+    add(device?.kind_label);
+    return [...byKey.values()].sort((a, b) => a.localeCompare(b, 'hr'));
+  }, [dir.clients, device?.kind_label]);
+
+  const [kindValue, kindLabel, kindNew] = useWatch({ control, name: ['kind', 'kind_label', 'kind_new'] });
+  const kindChoice = kindNew ? NEW_KIND : kindValue === 'ostalo' && kindLabel?.trim() ? CUSTOM_PREFIX + kindLabel.trim() : kindValue;
+  const chooseKind = (v: string) => {
+    const opts = { shouldDirty: true } as const;
+    if (v === NEW_KIND) {
+      setValue('kind', 'ostalo', opts); setValue('kind_label', '', opts); setValue('kind_new', true, opts);
+    } else if (v.startsWith(CUSTOM_PREFIX)) {
+      setValue('kind', 'ostalo', opts); setValue('kind_label', v.slice(CUSTOM_PREFIX.length), opts); setValue('kind_new', false, opts);
+    } else {
+      setValue('kind', v as DeviceKind, opts); setValue('kind_label', '', opts); setValue('kind_new', false, opts);
+    }
+  };
 
   const intervalValue = useWatch({ control, name: 'service_interval_months' });
   const noService = intervalValue !== '' && intervalValue != null && Number(intervalValue) === 0;
@@ -236,7 +271,8 @@ export function DeviceFormDialog({ siteId, device, onClose }: { siteId: string; 
       await save.mutateAsync({
         id: device?.id,
         values: {
-          site_id: siteId, kind: v.kind as DeviceKind, brand: opt(v.brand), model: opt(v.model),
+          site_id: siteId, kind: v.kind as DeviceKind, kind_label: v.kind === 'ostalo' ? opt(v.kind_label) : null,
+          brand: opt(v.brand), model: opt(v.model),
           serial_number: opt(v.serial_number)?.toUpperCase() ?? null, placement: opt(v.placement),
           install_date: opt(v.install_date), warranty_until: opt(v.warranty_until), refrigerant: opt(v.refrigerant),
           capacity_kw: v.capacity_kw ? Number(v.capacity_kw.replace(',', '.')) : null,
@@ -256,11 +292,25 @@ export function DeviceFormDialog({ siteId, device, onClose }: { siteId: string; 
 
         <Field label="Vrsta uređaja" required>
           {p => (
-            <select {...p} {...register('kind')} className={inputClass(false)}>
-              {Object.entries(DEVICE_KIND_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+            <select {...p} value={kindChoice} onChange={e => chooseKind(e.target.value)} className={inputClass(false)}>
+              {Object.entries(DEVICE_KIND_LABEL).filter(([k]) => k !== 'ostalo').map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+              {customKinds.length > 0 && (
+                <optgroup label="Dodane vrste">
+                  {customKinds.map(l => <option key={l} value={CUSTOM_PREFIX + l}>{l}</option>)}
+                </optgroup>
+              )}
+              <option value="ostalo">{DEVICE_KIND_LABEL.ostalo}</option>
+              <option value={NEW_KIND}>+ Nova vrsta…</option>
             </select>
           )}
         </Field>
+        {kindNew && (
+          <Field label="Naziv nove vrste" required error={errors.kind_label?.message}
+            hint="Npr. solarni kolektor. Ubuduće će se nuditi u izborniku.">
+            {p => <input {...p} {...register('kind_label')} autoFocus autoComplete="off" maxLength={60}
+              className={inputClass(!!errors.kind_label)} />}
+          </Field>
+        )}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label="Proizvođač" optional>
             {p => <input {...p} {...register('brand')} list="hvac-brands" autoComplete="off" className={inputClass(false)} />}

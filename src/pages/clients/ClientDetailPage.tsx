@@ -22,7 +22,7 @@ import { ClientFormDialog, SiteFormDialog, DeviceFormDialog } from '../../compon
 import { MergeDialog } from '../../components/clients/MergeDialog';
 import { ModuleNotEnabled } from '../../components/clients/ModuleNotEnabled';
 import { WorkLogForm } from '../../components/WorkLogForm';
-import { CLIENT_KIND_LABEL, DEVICE_KIND_LABEL, mapsUrl, siteAddress } from '../../lib/clients';
+import { CLIENT_KIND_LABEL, deviceKindLabel, mapsUrl, siteAddress } from '../../lib/clients';
 import { capitalize, formatDayLong } from '../../lib/format-date';
 import { formatHours, initials, pluralHr, todayISO } from '../../lib/utils';
 import { sumHours } from '../../lib/period';
@@ -105,7 +105,7 @@ export function ClientDetailPage() {
   };
   const deviceName = (deviceId: string) => {
     const d = client.sites.flatMap(s => s.devices).find(x => x.id === deviceId);
-    return d ? [d.brand, d.model].filter(Boolean).join(' ') || DEVICE_KIND_LABEL[d.kind] : '';
+    return d ? [d.brand, d.model].filter(Boolean).join(' ') || deviceKindLabel(d) : '';
   };
 
   const menuItem = 'flex items-center gap-2.5 px-3 py-2.5 min-h-11 rounded-lg text-sm text-slate-800 outline-none cursor-pointer data-[highlighted]:bg-slate-100';
@@ -157,6 +157,12 @@ export function ClientDetailPage() {
               className="inline-flex items-center justify-center gap-1.5 min-h-11 sm:min-h-0 px-3 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 disabled:opacity-50 rounded-lg">
               <Download size={15} aria-hidden="true" /> <span className="hidden sm:inline">PDF</span>
             </button>
+            {!isAdmin && (
+              <button type="button" onClick={() => setEditClient(true)}
+                className="inline-flex items-center gap-1.5 min-h-11 sm:min-h-0 px-3 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg">
+                <Pencil size={15} aria-hidden="true" /> <span className="hidden sm:inline">Uredi</span><span className="sr-only sm:hidden">Uredi klijenta</span>
+              </button>
+            )}
             {isAdmin && (
               <DropdownMenu.Root>
                 <DropdownMenu.Trigger aria-label="Više radnji"
@@ -237,6 +243,12 @@ export function ClientDetailPage() {
                       </p>
                     )}
                   </div>
+                  {!isAdmin && (
+                    <button type="button" onClick={() => setSiteForm({ site })} aria-label={`Uredi objekt ${siteAddress(site)}`}
+                      className="-mr-2 p-2 rounded-lg text-slate-500 hover:bg-slate-100">
+                      <Pencil size={16} aria-hidden="true" />
+                    </button>
+                  )}
                   {isAdmin && (
                     <DropdownMenu.Root>
                       <DropdownMenu.Trigger aria-label={`Radnje za objekt ${siteAddress(site)}`}

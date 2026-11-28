@@ -22,16 +22,14 @@ export async function markFeatureSeen(user: User | null, id: string): Promise<vo
   if (error) throw error;
 }
 
-const SESSION_KEY = 'whats-new-dismissed';
+// Zatvoreno bez "Ne prikazuj ponovno" → skriveno samo dok se stranica ne osvježi.
+// Namjerno u memoriji, ne u sessionStorage: slučajno zatvaranje ne smije sakriti najavu za cijelu karticu.
+const dismissedNow = new Set<string>();
 
-/** Zatvoreno bez "Ne prikazuj ponovno" → skriveno do kraja sesije preglednika. */
 export function isDismissedThisSession(id: string): boolean {
-  try { return sessionStorage.getItem(SESSION_KEY)?.split(',').includes(id) ?? false; } catch { return false; }
+  return dismissedNow.has(id);
 }
 
 export function dismissForSession(id: string): void {
-  try {
-    const cur = sessionStorage.getItem(SESSION_KEY)?.split(',').filter(Boolean) ?? [];
-    if (!cur.includes(id)) sessionStorage.setItem(SESSION_KEY, [...cur, id].join(','));
-  } catch { /* privatni prozor / blokirana pohrana */ }
+  dismissedNow.add(id);
 }
