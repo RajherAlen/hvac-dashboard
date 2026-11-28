@@ -1,6 +1,5 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { CheckCircle2, Phone, Wind } from 'lucide-react';
-import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { useSubmitServiceRequest, type PublicRequestInput } from '../../hooks/useServiceRequests';
 import { PUBLIC_DEVICE_OPTIONS, REQUEST_KIND_LABEL } from '../../lib/requests';
 import { errorMessage } from '../../lib/errors';
@@ -10,7 +9,7 @@ import { Field, FormError, Spinner } from '../../components/ui/form';
 import { inputClass } from '../../components/ui/styles';
 
 /** Naziv i telefon tvrtke na formi (neobavezno, iz .env). */
-const COMPANY_NAME = (import.meta.env.VITE_COMPANY_NAME as string | undefined)?.trim() || '';
+const COMPANY_NAME = (import.meta.env.VITE_COMPANY_NAME as string | undefined)?.trim() || 'Thermo-Vent';
 const COMPANY_PHONE = (import.meta.env.VITE_COMPANY_PHONE as string | undefined)?.trim() || '';
 
 const KINDS = Object.keys(REQUEST_KIND_LABEL) as RequestKind[];
@@ -23,7 +22,8 @@ const EMPTY: PublicRequestInput = {
 
 /** Javna forma za klijente: link /zahtjev, bez prijave. */
 export function ServiceRequestPage() {
-  useDocumentTitle('Zahtjev za servis');
+  // Javna stranica: bez "HVAC Admin" u naslovu taba
+  useEffect(() => { document.title = `${COMPANY_NAME} – zahtjev za servis ili popravak`; }, []);
   const submit = useSubmitServiceRequest();
   const [v, setV] = useState<PublicRequestInput>(EMPTY);
   const [errors, setErrors] = useState<Partial<Record<keyof PublicRequestInput, string>>>({});
@@ -41,6 +41,7 @@ export function ServiceRequestPage() {
     if (digits.length < 6 || digits.length > 15) errs.phone = 'Upišite broj telefona, npr. 091 234 5678';
     if (v.email.trim() && !/^\S+@\S+\.\S+$/.test(v.email.trim())) errs.email = 'Provjerite e-mail adresu';
     if (v.address.trim().length < 2) errs.address = 'Upišite ulicu i kućni broj';
+    if (v.city.trim().length < 2) errs.city = 'Upišite mjesto';
     if (!v.request_kind) errs.request_kind = 'Odaberite što vam treba';
     setErrors(errs);
     if (Object.keys(errs).length) {
@@ -145,9 +146,11 @@ export function ServiceRequestPage() {
                   {p => <input {...p} autoComplete="street-address" maxLength={150} placeholder="npr. Ilica 34" value={v.address} onChange={e => set('address', e.target.value)} className={inputClass(!!errors.address)} />}
                 </Field>
               </div>
-              <Field label="Mjesto" optional>
-                {p => <input {...p} autoComplete="address-level2" maxLength={80} value={v.city} onChange={e => set('city', e.target.value)} className={inputClass()} />}
-              </Field>
+              <div data-field="city">
+                <Field label="Mjesto" required error={errors.city}>
+                  {p => <input {...p} autoComplete="address-level2" maxLength={80} placeholder="npr. Zagreb" value={v.city} onChange={e => set('city', e.target.value)} className={inputClass(!!errors.city)} />}
+                </Field>
+              </div>
               <Field label="Kada vam odgovara dolazak?" optional hint="Npr. „radnim danom poslije 15 h”">
                 {p => <input {...p} maxLength={200} value={v.preferred_time} onChange={e => set('preferred_time', e.target.value)} className={inputClass()} />}
               </Field>

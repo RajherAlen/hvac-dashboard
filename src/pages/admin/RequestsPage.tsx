@@ -168,7 +168,7 @@ function FormLinkCard() {
   };
   const share = async () => {
     try {
-      await navigator.share({ title: 'Zahtjev za servis', text: 'Za servis ili popravak ispunite kratki obrazac:', url });
+      await navigator.share({ title: 'Thermo-Vent – zahtjev za servis ili popravak', text: 'Za servis ili popravak ispunite kratki obrazac:', url });
     } catch { /* korisnik odustao */ }
   };
   const canShare = typeof navigator !== 'undefined' && 'share' in navigator;

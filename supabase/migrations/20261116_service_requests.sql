@@ -78,6 +78,7 @@ BEGIN
   IF length(trim(coalesce(p->>'full_name', ''))) < 2 THEN RETURN json_build_object('error', 'Upišite ime i prezime.'); END IF;
   IF length(v_digits) NOT BETWEEN 6 AND 15 THEN RETURN json_build_object('error', 'Upišite ispravan broj telefona.'); END IF;
   IF length(trim(coalesce(p->>'address', ''))) < 2 THEN RETURN json_build_object('error', 'Upišite ulicu i kućni broj.'); END IF;
+  IF length(trim(coalesce(p->>'city', ''))) < 2 THEN RETURN json_build_object('error', 'Upišite mjesto.'); END IF;
   IF coalesce(p->>'request_kind', '') NOT IN ('servis','popravak','montaza','ostalo') THEN
     RETURN json_build_object('error', 'Odaberite što vam treba.');
   END IF;
