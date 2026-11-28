@@ -47,6 +47,7 @@ export type WorkOrder = Tables<'work_orders'>;
 export type Assignment = Tables<'work_order_assignments'>;
 export type ServiceCase = Tables<'service_cases'>;
 export type Absence = Tables<'absences'>;
+export type CrewRow = Tables<'crews'>;
 export type CalendarOverride = Tables<'calendar_overrides'>;
 
 export interface SiteWithDevices extends Site {

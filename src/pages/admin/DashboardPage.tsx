@@ -25,6 +25,7 @@ import { useStaffDirectory, type DirectoryEntry } from '../../hooks/useStaffDire
 import { BucketEntriesDialog } from '../../components/BucketEntriesDialog';
 import { LogLocation } from '../../components/clients/LogLocation';
 import { ServiceDueCard } from '../../components/clients/ServiceDueCard';
+import { WaitingListCard } from '../../components/orders/WaitingListCard';
 import type { Bucket } from '../../lib/period';
 import type { AbsenceKind, WorkLogWithEmployee } from '../../types';
 import { usePeriod } from '../../hooks/usePeriod';
@@ -336,6 +337,9 @@ export function AdminDashboardPage() {
           onClose={() => setAbsenceDialog(null)}
         />
       )}
+
+      {/* Lista čekanja: nalozi bez dodijeljenog dana */}
+      <WaitingListCard />
 
       {/* Servisni rokovi (prikazuje se samo ako ih ima) */}
       <ServiceDueCard />

@@ -203,7 +203,9 @@ const deviceSchema = z.object({
   warranty_until: z.string().optional(),
   refrigerant: z.string().optional(),
   capacity_kw: z.string().trim().regex(/^(\d{1,3}([.,]\d{1,2})?)?$/, 'Npr. 3,5').optional(),
-  service_interval_months: z.coerce.number().int().min(1, 'Najmanje 1 mjesec').max(120),
+  // 0 = uređaj ne treba servis (kvačica "Ne treba servis")
+  service_interval_months: z.preprocess(v => (v === '' ? undefined : v),
+    z.coerce.number({ error: 'Upišite broj mjeseci' }).int('Cijeli broj mjeseci').min(0, 'Ne može biti negativno').max(120, 'Najviše 120 mjeseci')),
   notes: z.string().optional(),
 });
 type DeviceValues = z.input<typeof deviceSchema>;
@@ -213,7 +215,7 @@ const REFRIGERANTS = ['R32', 'R410A', 'R290', 'R134a', 'R407C'];
 
 export function DeviceFormDialog({ siteId, device, onClose }: { siteId: string; device?: Device; onClose: () => void }) {
   const save = useSaveDevice();
-  const { register, handleSubmit, control, formState: { errors, isSubmitting } } = useForm<DeviceValues>({
+  const { register, handleSubmit, control, setValue, formState: { errors, isSubmitting } } = useForm<DeviceValues>({
     resolver: zodResolver(deviceSchema),
     mode: 'onTouched',
     defaultValues: {
@@ -224,6 +226,9 @@ export function DeviceFormDialog({ siteId, device, onClose }: { siteId: string; 
       service_interval_months: device?.service_interval_months ?? 12, notes: device?.notes ?? '',
     },
   });
+
+  const intervalValue = useWatch({ control, name: 'service_interval_months' });
+  const noService = intervalValue !== '' && intervalValue != null && Number(intervalValue) === 0;
 
   const onSubmit = async (raw: DeviceValues) => {
     const v = deviceSchema.parse(raw);
@@ -291,10 +296,22 @@ export function DeviceFormDialog({ siteId, device, onClose }: { siteId: string; 
             {p => <input {...p} {...register('capacity_kw')} inputMode="decimal" className={inputClass(!!errors.capacity_kw, 'tabular-nums')} />}
           </Field>
           <Field label="Servis (mj.)" error={errors.service_interval_months?.message}>
-            {p => <input {...p} {...register('service_interval_months')} type="number" min={1} max={120} inputMode="numeric"
-              className={inputClass(!!errors.service_interval_months, 'tabular-nums')} />}
+            {p => noService
+              ? <input {...p} value="–" readOnly tabIndex={-1} aria-label="Servis: ne treba"
+                  className={inputClass(false, 'bg-slate-50 text-slate-500')} />
+              : <input {...p} {...register('service_interval_months')} type="number" min={1} max={120} inputMode="numeric"
+                  className={inputClass(!!errors.service_interval_months, 'tabular-nums')} />}
           </Field>
         </div>
+        <label className="flex items-start gap-2.5 text-sm text-slate-800 cursor-pointer">
+          <input type="checkbox" checked={noService}
+            onChange={e => setValue('service_interval_months', e.target.checked ? 0 : (device?.service_interval_months || 12), { shouldValidate: true })}
+            className="mt-0.5 h-5 w-5 sm:h-4 sm:w-4 shrink-0 rounded border-slate-400 accent-blue-600" />
+          <span>
+            Ne treba servis
+            <span className="block text-xs text-slate-600">Uređaj se neće pojavljivati u servisnim rokovima ni podsjetnicima.</span>
+          </span>
+        </label>
         <Field label="Napomene" optional>
           {p => <textarea {...p} {...register('notes')} rows={2} className={inputClass(false, 'resize-none')} />}
         </Field>

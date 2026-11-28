@@ -391,6 +391,30 @@ export type Database = {
         Update: { kind?: CalendarOverrideKind; label?: string | null }
         Relationships: []
       }
+      /** Postoji tek nakon migracije 20261113_crews.sql */
+      crews: {
+        Row: {
+          id: string
+          name: string
+          lead_id: string | null
+          vehicle: string | null
+          /** NULL = stalna ekipa */
+          valid_until: string | null
+          position: number
+          created_at: string
+        }
+        Insert: Record<string, never>
+        Update: Record<string, never>
+        Relationships: []
+      }
+      crew_members: {
+        Row: { crew_id: string; employee_id: string }
+        Insert: Record<string, never>
+        Update: Record<string, never>
+        Relationships: [
+          { foreignKeyName: "crew_members_crew_id_fkey"; columns: ["crew_id"]; isOneToOne: false; referencedRelation: "crews"; referencedColumns: ["id"] },
+        ]
+      }
     }
     Views: {
       device_service_status: {
@@ -409,6 +433,7 @@ export type Database = {
       cancel_absence: { Args: { p_id: string }; Returns: undefined }
       update_work_log: { Args: { p_id: string; p_values: Json; p_device_ids?: string[] | null; p_is_service?: boolean | null }; Returns: Database['public']['Tables']['work_logs']['Row'] }
       save_work_order: { Args: { p_order: Json; p_assignments: Json; p_device_ids?: string[] }; Returns: string }
+      save_crew: { Args: { p_crew: Json; p_members: string[] }; Returns: string }
       complete_assignment: { Args: { p_assignment: string; p_order_done?: boolean }; Returns: undefined }
       refresh_service_cases: { Args: { p_horizon_days?: number }; Returns: number }
       add_work_logs: { Args: { items: Json }; Returns: string[] }

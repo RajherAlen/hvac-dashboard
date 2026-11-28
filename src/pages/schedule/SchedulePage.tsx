@@ -7,10 +7,13 @@ import {
 } from '@dnd-kit/core';
 import {
   AlertTriangle, ArrowLeft, ArrowRight, CalendarPlus, CheckCircle2, CircleAlert, GripVertical, MoreHorizontal,
-  Plus, PlusCircle, Trash2, UserRound, Wrench,
+  Plus, PlusCircle, Trash2, UserRound, Users, Wrench,
 } from 'lucide-react';
 import { addDays, parseISO } from 'date-fns';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { crewActiveOn, useCrews, type Crew as Team } from '../../hooks/useCrews';
+import { matchCrew } from '../../lib/crews';
+import { PersonAvatar } from '../../components/crews/PersonAvatar';
 import { usePeriod } from '../../hooks/usePeriod';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { useStaffDirectory } from '../../hooks/useStaffDirectory';
@@ -18,8 +21,8 @@ import { useClientDirectory } from '../../hooks/useClients';
 import { useWorkLogs } from '../../hooks/useWorkLogs';
 import { useServiceBoard, type ServiceItem } from '../../hooks/useServiceCases';
 import {
-  usePlan, useUnscheduledOrders, useMoveAssignment, useAddAssignment, useRemoveAssignment, useSaveOrder,
-  type PlanAssignment, type OrderWithDevices,
+  usePlan, useUnscheduledOrders, useMoveAssignment, useMoveAssignments, useAddAssignment, useRemoveAssignment,
+  useRemoveAssignments, useSaveOrder, useSetOrderDayCrew, type PlanAssignment, type OrderWithDevices,
 } from '../../hooks/useWorkOrders';
 import { PeriodStepper } from '../../components/PeriodNav';
 import { OrderFormDialog, type OrderPreset } from '../../components/orders/OrderFormDialog';
@@ -49,6 +52,23 @@ function shiftWorkday(day: string, dir: 1 | -1): string {
 /** 6 h / 7,5 h – kratko za ćelije */
 const short = (v: number) => `${String(Math.round(v * 10) / 10).replace('.', ',')} h`;
 
+/**
+ * Ekipa naloga: sve dodjele istog naloga istog dana. Puna kartica se crta jednom, u redu
+ * voditelja (prvi prisutni po redoslijedu tehničara); ostali članovi dobiju samo traku.
+ */
+type Crew = { key: string; items: PlanAssignment[]; lead: string; present: number; team: Team | null };
+type CrewMember = { id: string; asgId: string; name: string; color: string; away: Absence | null };
+const crewKey = (a: { work_order_id: string; day: string }) => `${a.work_order_id}|${a.day}`;
+const teamCellId = (team: string, day: string) => `t:${team}|${day}`;
+
+const firstName = (name: string) => name.split(' ')[0];
+
+type ViewMode = 'zaposlenici' | 'ekipe';
+const VIEW_KEY = 'raspored.prikaz';
+function storedView(): ViewMode | null {
+  try { const v = localStorage.getItem(VIEW_KEY); return v === 'ekipe' || v === 'zaposlenici' ? v : null; } catch { return null; }
+}
+
 export function SchedulePage() {
   useDocumentTitle('Raspored');
   const period = usePeriod('week', ['week'], { allowFuture: true });
@@ -62,14 +82,31 @@ export function SchedulePage() {
   const { data: allLogs = [] } = useWorkLogs({ startDate: start, endDate: end });
   const { cal } = useWorkCalendar(start, end);
   const move = useMoveAssignment();
+  const moveMany = useMoveAssignments();
   const addAsg = useAddAssignment();
   const removeAsg = useRemoveAssignment();
+  const removeMany = useRemoveAssignments();
+  const setDayCrew = useSetOrderDayCrew();
   const saveOrder = useSaveOrder();
+  const crewsQ = useCrews();
 
   const [creating, setCreating] = useState<OrderPreset | null>(null);
   const [openOrder, setOpenOrder] = useState<string | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+
+  // Ekipe aktivne bilo kojeg dana u tjednu
+  const teams = useMemo(() => (crewsQ.data ?? []).filter(t => crewActiveOn(t, start)), [crewsQ.data, start]);
+  const paramView = params.get('prikaz');
+  const view: ViewMode = teams.length === 0 ? 'zaposlenici'
+    : paramView === 'ekipe' || paramView === 'zaposlenici' ? paramView : storedView() ?? 'ekipe';
+  const setView = (v: ViewMode) => {
+    try { localStorage.setItem(VIEW_KEY, v); } catch { /* privatni prozor */ }
+    setParams(p => { const n = new URLSearchParams(p); n.set('prikaz', v); return n; }, { replace: true });
+  };
+  const byTeams = view === 'ekipe';
 
   const plan = useMemo(() => planQ.data ?? [], [planQ.data]);
   const logs = useMemo(() => allLogs.filter(l => isStaff(l.profiles)), [allLogs]);
@@ -97,6 +134,24 @@ export function SchedulePage() {
   }, [logs]);
   const loggedAsg = useMemo(() => new Set(logs.map(l => l.assignment_id).filter(Boolean) as string[]), [logs]);
 
+  const crews = useMemo(() => {
+    const rank = new Map(staff.map((e, i) => [e.id, i]));
+    const groups = new Map<string, PlanAssignment[]>();
+    for (const a of plan) {
+      const k = crewKey(a);
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k)!.push(a);
+    }
+    const out = new Map<string, Crew>();
+    for (const [key, items] of groups) {
+      items.sort((x, y) => (rank.get(x.employee_id) ?? 999) - (rank.get(y.employee_id) ?? 999));
+      const present = items.filter(a => !cal.absenceOf(a.employee_id, a.day));
+      const team = byTeams ? matchCrew(items.map(a => a.employee_id), teams, items[0].day) : null;
+      out.set(key, { key, items, lead: (present[0] ?? items[0]).employee_id, present: present.length, team });
+    }
+    return out;
+  }, [plan, staff, cal, byTeams, teams]);
+
   const pendingServices = board.items.filter(i => i.sc.status === 'due' || i.sc.status === 'contacted');
   const unscheduled = unscheduledQ.data ?? [];
 
@@ -118,11 +173,37 @@ export function SchedulePage() {
     if (id.startsWith('a:')) { const a = plan.find(x => x.id === id.slice(2)); return a ? `${a.work_orders.title}, ${placeOf(a.work_orders.site_id)}` : 'nalog'; }
     if (id.startsWith('o:')) { const o = unscheduled.find(x => x.id === id.slice(2)); return o ? `${o.title}, ${placeOf(o.site_id)}` : 'nalog'; }
     if (id.startsWith('s:')) { const s = pendingServices.find(x => x.sc.id === id.slice(2)); return s ? `servis, ${s.client.name}` : 'servis'; }
+    if (id.startsWith('g:')) {
+      const c = crews.get(id.slice(2));
+      const o = c?.items[0].work_orders;
+      return o ? `${o.title}, ${placeOf(o.site_id)} (${c.items.length} tehničara)` : 'nalog';
+    }
+    if (id.startsWith('p:')) { const a = plan.find(x => x.id === id.slice(2)); return a ? `${nameOf(a.employee_id)} na nalogu ${placeOf(a.work_orders.site_id)}` : 'tehničar'; }
     return '';
   };
   const describeCell = (id: string) => {
-    const [emp, day] = id.slice(2).split('|');
-    return `${nameOf(emp)}, ${formatWeekday(day)}`;
+    const [who, day] = id.slice(2).split('|');
+    if (id.startsWith('t:')) return `ekipa ${teams.find(t => t.id === who)?.name ?? ''}, ${formatWeekday(day)}`;
+    return `${nameOf(who)}, ${formatWeekday(day)}`;
+  };
+
+  /** Prisutni članovi ekipe tog dana (odsutni se ne uključuju automatski). */
+  const presentMembers = (t: Team, day: string) => {
+    const known = new Set(staff.map(e => e.id));
+    return t.members.filter(m => known.has(m) && !cal.absenceOf(m, day));
+  };
+
+  /** Nalog na red ekipe: dobivaju ga svi prisutni članovi tog dana. */
+  const assignToTeam = (t: Team, day: string, order: { id: string; title: string; hours: number }, from: { id: string; employee_id: string }[]) => {
+    const ids = presentMembers(t, day);
+    if (ids.length === 0) { toast.error(`Nitko iz ekipe ${t.name} ne radi ${formatWeekday(day)}.`); return; }
+    const skipped = t.members.length - ids.length;
+    setDayCrew.mutate({ work_order_id: order.id, from, day, employee_ids: ids, planned_hours: order.hours }, {
+      onSuccess: () => toast.success(`Dodijeljeno ekipi ${t.name}`, {
+        description: `${order.title} → ${formatWeekday(day)}${skipped > 0 ? ` · ${ids.length}/${t.members.length} (odsutni nisu uključeni)` : ''}`,
+      }),
+      onError: e => toast.error(e && /duplicate|unique/i.test(errorMessage(e)) ? 'Netko iz ekipe već ima ovaj nalog tog dana.' : errorMessage(e)),
+    });
   };
 
   const undoMove = (id: string, prev: { employee_id: string; day: string }) =>
@@ -140,26 +221,124 @@ export function SchedulePage() {
     });
   };
 
-  const scheduleService = (item: ServiceItem, employee_id: string, day: string) =>
+  /** Cijela ekipa naloga na drugi dan; tehničari ostaju isti. */
+  const moveCrew = (crew: Crew, day: string) => {
+    if (crew.items[0].day === day) return;
+    const prev = crew.items.map(a => ({ id: a.id, employee_id: a.employee_id, day: a.day }));
+    const title = crew.items[0].work_orders.title;
+    const away = crew.items.filter(a => cal.absenceOf(a.employee_id, day)).map(a => firstName(nameOf(a.employee_id)));
+    if (away.length) toast.warning(`Taj dan ${away.length === 1 ? 'je odsutan' : 'su odsutni'}: ${away.join(', ')}`);
+    moveMany.mutate(crew.items.map(a => ({ id: a.id, employee_id: a.employee_id, day })), {
+      onSuccess: () => toast.success('Premješteno', {
+        description: `${title} (${crew.items.length} tehničara) → ${formatWeekday(day)}`,
+        action: { label: 'Poništi', onClick: () => moveMany.mutate(prev, { onError: e => toast.error(errorMessage(e)) }) },
+      }),
+      onError: e => toast.error(e && /duplicate|unique/i.test(errorMessage(e)) ? 'Netko iz ekipe već ima ovaj nalog tog dana.' : errorMessage(e)),
+    });
+  };
+
+  /** Dodaje tehničara na nalog za taj dan ili ga uklanja (posljednji se ne može ukloniti ovdje). */
+  const toggleMember = (crew: Crew, empId: string) => {
+    const first = crew.items[0];
+    const existing = crew.items.find(a => a.employee_id === empId);
+    const who = firstName(nameOf(empId));
+    if (existing) {
+      if (crew.items.length === 1) return;
+      removeAsg.mutate(existing.id, {
+        onSuccess: () => toast.success(`Uklonjeno s naloga: ${who}`, { description: first.work_orders.title }),
+        onError: e => toast.error(errorMessage(e)),
+      });
+      return;
+    }
+    const away = cal.absenceOf(empId, first.day);
+    if (away) toast.warning(`${who} je taj dan odsutan (${ABSENCE_LABEL[away.kind].toLowerCase()})`);
+    addAsg.mutate({ work_order_id: first.work_order_id, employee_id: empId, day: first.day, planned_hours: Number(first.planned_hours) }, {
+      onSuccess: () => toast.success(`Dodano na nalog: ${who}`, { description: first.work_orders.title }),
+      onError: e => toast.error(errorMessage(e)),
+    });
+  };
+
+  const removeCrew = (crew: Crew) => removeMany.mutate(crew.items.map(a => a.id), {
+    onSuccess: () => toast.success('Uklonjeno iz dana', { description: crew.items[0].work_orders.title }),
+    onError: e => toast.error(errorMessage(e)),
+  });
+
+  const scheduleService = (item: ServiceItem, employee_ids: string[], day: string, who: string) =>
     saveOrder.mutate({
       site_id: item.site.id, kind: 'servis', title: 'Redovni servis', notes: item.sc.note ?? '', estimate_hours: 2,
       service_case_id: item.sc.id, device_ids: item.devices.map(d => d.id),
-      assignments: [{ employee_id, day, planned_hours: 2 }],
+      assignments: employee_ids.map(employee_id => ({ employee_id, day, planned_hours: 2 })),
     }, {
-      onSuccess: () => toast.success('Servis zakazan', { description: `${item.client.name} → ${nameOf(employee_id).split(' ')[0]}, ${formatWeekday(day)}` }),
+      onSuccess: () => toast.success('Servis zakazan', { description: `${item.client.name} → ${who}, ${formatWeekday(day)}` }),
       onError: e => toast.error(errorMessage(e)),
     });
+
+  /** Inicijali s kartice na drugog tehničara: zamjena osobe na tom nalogu (dan ostaje). */
+  const swapPerson = (asgId: string, emp: string) => {
+    const a = plan.find(x => x.id === asgId);
+    if (!a || a.employee_id === emp) return;
+    const prev = { employee_id: a.employee_id, day: a.day };
+    const away = cal.absenceOf(emp, a.day);
+    if (away) toast.warning(`${firstName(nameOf(emp))} je taj dan odsutan (${ABSENCE_LABEL[away.kind].toLowerCase()})`);
+    move.mutate({ id: a.id, employee_id: emp, day: a.day }, {
+      onSuccess: () => toast.success('Tehničar zamijenjen', {
+        description: `${placeOf(a.work_orders.site_id)}: ${firstName(nameOf(prev.employee_id))} → ${firstName(nameOf(emp))}`,
+        action: { label: 'Poništi', onClick: () => undoMove(a.id, prev) },
+      }),
+      onError: e => toast.error(e && /duplicate|unique/i.test(errorMessage(e)) ? `${firstName(nameOf(emp))} je već na ovom nalogu tog dana.` : errorMessage(e)),
+    });
+  };
 
   const onDragStart = (e: DragStartEvent) => setDragging(String(e.active.id));
   const onDragEnd = (e: DragEndEvent) => {
     setDragging(null);
     const over = e.over ? String(e.over.id) : null;
+    const id = String(e.active.id);
+
+    // Red ekipe: nalog dobivaju svi prisutni članovi
+    if (over?.startsWith('t:')) {
+      const [teamId, day] = over.slice(2).split('|');
+      const t = teams.find(x => x.id === teamId);
+      if (!t || id.startsWith('p:')) return;
+      if (id.startsWith('g:') || id.startsWith('a:')) {
+        const items = id.startsWith('g:') ? crews.get(id.slice(2))?.items : plan.filter(x => x.id === id.slice(2));
+        if (!items?.length) return;
+        const o = items[0].work_orders;
+        assignToTeam(t, day, { id: o.id, title: o.title, hours: Number(items[0].planned_hours) }, items);
+      } else if (id.startsWith('o:')) {
+        const o = unscheduled.find(x => x.id === id.slice(2));
+        if (o) assignToTeam(t, day, { id: o.id, title: o.title, hours: Number(o.estimate_hours) }, []);
+      } else if (id.startsWith('s:')) {
+        const s = pendingServices.find(x => x.sc.id === id.slice(2));
+        const ids = presentMembers(t, day);
+        if (s && ids.length) scheduleService(s, ids, day, `ekipa ${t.name}`);
+        else if (s) toast.error(`Nitko iz ekipe ${t.name} ne radi ${formatWeekday(day)}.`);
+      }
+      return;
+    }
+
     if (!over?.startsWith('c:')) return;
     const [emp, day] = over.slice(2).split('|');
+    if (id.startsWith('p:')) { swapPerson(id.slice(2), emp); return; }
+    if (id.startsWith('g:')) {
+      const crew = crews.get(id.slice(2));
+      if (!crew) return;
+      // Po ekipama: kartica ekipe na red jednog tehničara → samo on (izdvaja se iz ekipe)
+      if (byTeams && crew.team) {
+        const o = crew.items[0].work_orders;
+        setDayCrew.mutate({ work_order_id: o.id, from: crew.items, day, employee_ids: [emp], planned_hours: Number(crew.items[0].planned_hours) }, {
+          onSuccess: () => toast.success('Dodijeljeno samo jednom tehničaru', { description: `${o.title} → ${firstName(nameOf(emp))}, ${formatWeekday(day)}` }),
+          onError: err => toast.error(errorMessage(err)),
+        });
+        return;
+      }
+      // Inače se mijenja samo dan, članovi ostaju (mijenjaju se u izborniku kartice ili povlačenjem inicijala)
+      moveCrew(crew, day);
+      return;
+    }
     // Odsutnost se ne blokira (plan se može promijeniti), ali se upozori
     const away = cal.absenceOf(emp, day);
     if (away) toast.warning(`${nameOf(emp).split(' ')[0]} je taj dan odsutan (${ABSENCE_LABEL[away.kind].toLowerCase()})`);
-    const id = String(e.active.id);
     if (id.startsWith('a:')) {
       const a = plan.find(x => x.id === id.slice(2));
       if (a) moveTo(a, emp, day);
@@ -171,7 +350,7 @@ export function SchedulePage() {
       });
     } else if (id.startsWith('s:')) {
       const s = pendingServices.find(x => x.sc.id === id.slice(2));
-      if (s) scheduleService(s, emp, day);
+      if (s) scheduleService(s, [emp], day, firstName(nameOf(emp)));
     }
   };
 
@@ -184,22 +363,156 @@ export function SchedulePage() {
   const weekPlanned = (emp: string) => plan.filter(a => a.employee_id === emp).reduce((s, a) => s + Number(a.planned_hours), 0);
   const weekCapacity = (emp: string) => visibleDays.filter(d => cal.expected(emp, d, 1) > 0).length * DAY_CAPACITY;
 
-  const chipFor = (a: PlanAssignment, draggable: boolean) => (
-    <AssignmentChip
-      key={a.id}
-      a={a}
-      place={placeOf(a.work_orders.site_id)}
-      state={assignmentState(a, loggedAsg.has(a.id), today)}
-      draggable={draggable}
-      staff={staff}
-      onOpen={() => setOpenOrder(a.work_order_id)}
-      onMove={(emp, day) => moveTo(a, emp, day)}
-      onRemove={() => removeAsg.mutate(a.id, {
-        onSuccess: () => toast.success('Uklonjeno iz dana', { description: a.work_orders.title }),
-        onError: e => toast.error(errorMessage(e)),
-      })}
-    />
-  );
+  const chipFor = (crew: Crew, draggable: boolean) => {
+    const own = crew.items.find(x => x.employee_id === crew.lead) ?? crew.items[0];
+    const multi = crew.items.length > 1;
+    const states = crew.items.map(x => assignmentState(x, loggedAsg.has(x.id), today));
+    const state: AssignmentState = states.every(s => s === 'done') ? 'done' : states.some(s => s === 'missed') ? 'missed' : 'planned';
+    const team: CrewMember[] = crew.items.map(x => ({
+      id: x.employee_id, asgId: x.id, name: nameOf(x.employee_id), color: colors[x.employee_id], away: cal.absenceOf(x.employee_id, x.day),
+    }));
+    return (
+      <AssignmentChip
+        key={crew.key}
+        dragId={multi ? `g:${crew.key}` : `a:${own.id}`}
+        a={own}
+        team={team}
+        present={crew.present}
+        place={placeOf(own.work_orders.site_id)}
+        state={state}
+        draggable={draggable}
+        staff={staff}
+        onOpen={() => setOpenOrder(own.work_order_id)}
+        onShift={dir => multi ? moveCrew(crew, shiftWorkday(own.day, dir)) : moveTo(own, own.employee_id, shiftWorkday(own.day, dir))}
+        onReassign={multi ? undefined : emp => moveTo(own, emp, own.day)}
+        onToggleMember={emp => toggleMember(crew, emp)}
+        onRemove={() => removeCrew(crew)}
+      />
+    );
+  };
+
+  /**
+   * Sadržaj ćelije tehničara: kartice naloga kojima je voditelj ili jedini; nalozi ekipe
+   * (u prikazu po ekipama) i tuđe kartice samo kao iscrtkane trake zauzetosti.
+   */
+  const cellContent = (empId: string, day: string, draggable: boolean, withTeams = byTeams) => {
+    const items = byCell.get(`${empId}|${day}`) ?? [];
+    const cards: ReactNode[] = [];
+    const bands = new Map<string, { who: string; whoFull: string; list: PlanAssignment[] }>();
+    for (const a of items) {
+      const crew = crews.get(crewKey(a)) ?? { key: crewKey(a), items: [a], lead: a.employee_id, present: 1, team: null };
+      let band: { key: string; who: string; whoFull: string } | null = null;
+      if (withTeams && crew.team) band ={ key: `t:${crew.team.id}`, who: crew.team.name, whoFull: `ekipa ${crew.team.name}` };
+      else if (crew.items.length > 1 && crew.lead !== empId) band = { key: crew.lead, who: firstName(nameOf(crew.lead)), whoFull: nameOf(crew.lead) };
+      if (band) {
+        if (!bands.has(band.key)) bands.set(band.key, { who: band.who, whoFull: band.whoFull, list: [] });
+        bands.get(band.key)!.list.push(a);
+      } else {
+        cards.push(chipFor(crew, draggable));
+      }
+    }
+    return (
+      <>
+        {cards}
+        {[...bands].map(([k, b]) => (
+          <CrewBand key={k} who={b.who} whoFull={b.whoFull} items={b.list} placeOf={placeOf} onOpen={setOpenOrder} />
+        ))}
+      </>
+    );
+  };
+
+  /** Nalozi ekipe tog dana (jedna kartica po nalogu). */
+  const teamCrews = (teamId: string, day: string) =>
+    [...crews.values()].filter(c => c.team?.id === teamId && c.items[0].day === day);
+  const crewHours = (c: Crew) => Math.max(...c.items.map(a => Number(a.planned_hours)));
+
+  // Raspored redova: ekipe s članovima ispod, zatim tehničari bez ekipe (svatko samo jednom)
+  const placed = new Set<string>();
+  const teamRows = byTeams ? teams.map(t => {
+    const members = staff.filter(e => t.members.includes(e.id) && !placed.has(e.id));
+    members.forEach(e => placed.add(e.id));
+    return { t, members };
+  }) : [];
+  const looseStaff = staff.filter(e => !placed.has(e.id));
+
+  const personRow = (emp: Profile, indented: boolean) => {
+    const wp = weekPlanned(emp.id);
+    return (
+      <Fragment key={emp.id}>
+        <div className={cn('sticky left-0 z-10 px-3 py-2.5 border-b border-slate-100', indented ? 'bg-slate-50/80 pl-6' : 'bg-white')}>
+          <p className="flex items-center gap-2 text-sm font-medium text-slate-900">
+            {indented && <span className="text-slate-400 -ml-3" aria-hidden="true">└</span>}
+            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: colors[emp.id] }} aria-hidden="true" />
+            <span className="truncate">{emp.full_name}</span>
+          </p>
+          <p className={cn('text-xs tabular-nums ml-[18px]', wp > weekCapacity(emp.id) ? 'text-amber-800 font-medium' : 'text-slate-600')}>
+            {short(wp)} / {short(weekCapacity(emp.id))}
+          </p>
+        </div>
+        {visibleDays.map(d => {
+          const items = byCell.get(`${emp.id}|${d}`) ?? [];
+          const narrow = !isWorkday(d, cal) && !weekendBusy(d);
+          return (
+            <DayCell key={d} id={cellId(emp.id, d)} day={d} today={today} narrow={narrow} compact={indented}
+              workday={isWorkday(d, cal)} absence={cal.absenceOf(emp.id, d)}
+              planned={items.reduce((s, a) => s + Number(a.planned_hours), 0)}
+              actual={actualByCell.get(`${emp.id}|${d}`) ?? 0}
+              label={`${emp.full_name}, ${formatWeekday(d)}`}
+              onAdd={() => setCreating({ employee_id: emp.id, day: d })}>
+              {cellContent(emp.id, d, true)}
+            </DayCell>
+          );
+        })}
+      </Fragment>
+    );
+  };
+
+  const teamRow = ({ t, members }: { t: Team; members: Profile[] }) => {
+    const open = !collapsed.has(t.id);
+    const weekTeam = visibleDays.reduce((s, d) => s + teamCrews(t.id, d).reduce((x, c) => x + crewHours(c), 0), 0);
+    return (
+      <Fragment key={t.id}>
+        <div className="sticky left-0 z-10 bg-blue-50/60 px-3 py-2.5 border-b border-slate-200">
+          <p className="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
+            <span className="text-[10px] font-bold tracking-wide text-blue-800 bg-blue-100 rounded px-1.5 py-0.5">EKIPA</span>
+            <span className="truncate">{t.name}</span>
+          </p>
+          <div className="mt-1 flex items-center gap-2">
+            <span className="flex -space-x-1">
+              {t.members.map(m => <PersonAvatar key={m} name={nameOf(m)} color={colors[m]} size="xs" title={`${nameOf(m)}${m === t.lead_id ? ' (voditelj)' : ''}`} />)}
+            </span>
+            <span className="text-xs text-slate-600 tabular-nums">{short(weekTeam)}</span>
+          </div>
+          {members.length > 0 && (
+            <button type="button" onClick={() => setCollapsed(s => { const n = new Set(s); if (n.has(t.id)) n.delete(t.id); else n.add(t.id); return n; })}
+              aria-expanded={open} className="mt-0.5 text-xs font-medium text-blue-700 hover:underline min-h-6">
+              {open ? 'Sakrij članove' : `Prikaži članove (${members.length})`}
+            </button>
+          )}
+        </div>
+        {visibleDays.map(d => {
+          const list = teamCrews(t.id, d);
+          const narrow = !isWorkday(d, cal) && !weekendBusy(d);
+          const away = t.members.filter(m => cal.absenceOf(m, d));
+          return (
+            <DayCell key={d} id={teamCellId(t.id, d)} day={d} today={today} narrow={narrow} team
+              workday={isWorkday(d, cal)} absence={null}
+              planned={list.reduce((s, c) => s + crewHours(c), 0)}
+              label={`ekipa ${t.name}, ${formatWeekday(d)}`}
+              onAdd={() => setCreating({ crew_id: t.id, day: d })}>
+              {away.length > 0 && isWorkday(d, cal) && (
+                <span className="text-[11px] font-medium text-violet-800">
+                  Odsutni: {away.map(m => firstName(nameOf(m))).join(', ')}
+                </span>
+              )}
+              {list.map(c => chipFor(c, true))}
+            </DayCell>
+          );
+        })}
+        {open && members.map(e => personRow(e, true))}
+      </Fragment>
+    );
+  };
 
   const activeItem = dragging ? describe(dragging) : null;
 
@@ -208,9 +521,29 @@ export function SchedulePage() {
       <header className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
         <div>
           <h1 className="text-lg sm:text-xl font-bold text-slate-900">Raspored</h1>
-          <p className="text-sm text-slate-600 mt-0.5">Povucite nalog na tehničara i dan. Stupac uz rub ćelije pokazuje koliko je dan popunjen (do {DAY_CAPACITY} h).</p>
+          <p className="text-sm text-slate-600 mt-0.5">
+            {byTeams
+              ? 'Povucite nalog na red ekipe (dobivaju ga svi prisutni članovi) ili na tehničara (samo on). Inicijale s kartice povucite na drugog tehničara za zamjenu.'
+              : 'Povucite nalog na tehničara i dan. Nalog s više tehničara prikazuje se jednom, a ostalim članovima kao iscrtkana traka.'}
+            {' '}Stupac uz rub ćelije pokazuje koliko je dan popunjen (do {DAY_CAPACITY} h).
+          </p>
         </div>
         <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+          {crewsQ.data != null && (
+            teams.length > 0 ? (
+              <div role="radiogroup" aria-label="Način prikaza" className="hidden lg:grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-lg">
+                {([['ekipe', 'Po ekipama'], ['zaposlenici', 'Po zaposlenicima']] as const).map(([v, l]) => (
+                  <button key={v} type="button" role="radio" aria-checked={view === v} onClick={() => setView(v)}
+                    className={cn('px-3 min-h-8 text-sm font-medium rounded-md whitespace-nowrap',
+                      view === v ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900')}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <Link to="/ekipe" className="hidden lg:inline text-sm font-medium text-blue-700 hover:underline whitespace-nowrap">Složi ekipe</Link>
+            )
+          )}
           <PeriodStepper period={period} />
           <button type="button" onClick={() => setCreating({})}
             className="inline-flex items-center justify-center gap-1.5 min-h-11 sm:min-h-0 px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg">
@@ -293,36 +626,11 @@ export function SchedulePage() {
                 );
               })}
 
-              {staff.map(emp => {
-                const wp = weekPlanned(emp.id);
-                return (
-                  <Fragment key={emp.id}>
-                    <div className="sticky left-0 z-10 bg-white px-3 py-2.5 border-b border-slate-100">
-                      <p className="flex items-center gap-2 text-sm font-medium text-slate-900">
-                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: colors[emp.id] }} aria-hidden="true" />
-                        <span className="truncate">{emp.full_name}</span>
-                      </p>
-                      <p className={cn('text-xs tabular-nums ml-[18px]', wp > weekCapacity(emp.id) ? 'text-amber-800 font-medium' : 'text-slate-600')}>
-                        {short(wp)} / {short(weekCapacity(emp.id))}
-                      </p>
-                    </div>
-                    {visibleDays.map(d => {
-                      const items = byCell.get(`${emp.id}|${d}`) ?? [];
-                      const narrow = !isWorkday(d, cal) && !weekendBusy(d);
-                      return (
-                        <DayCell key={d} id={cellId(emp.id, d)} day={d} today={today} narrow={narrow}
-                          workday={isWorkday(d, cal)} absence={cal.absenceOf(emp.id, d)}
-                          planned={items.reduce((s, a) => s + Number(a.planned_hours), 0)}
-                          actual={actualByCell.get(`${emp.id}|${d}`) ?? 0}
-                          label={`${emp.full_name}, ${formatWeekday(d)}`}
-                          onAdd={() => setCreating({ employee_id: emp.id, day: d })}>
-                          {items.map(a => chipFor(a, true))}
-                        </DayCell>
-                      );
-                    })}
-                  </Fragment>
-                );
-              })}
+              {teamRows.map(teamRow)}
+              {byTeams && looseStaff.length > 0 && (
+                <div className="col-span-full px-3 pt-3 pb-1.5 text-xs font-semibold text-slate-600 border-b border-slate-200 bg-slate-50">Bez ekipe</div>
+              )}
+              {looseStaff.map(emp => personRow(emp, false))}
             </div>
             {staff.length === 0 && <p className="p-6 text-sm text-slate-600">Nema aktivnih tehničara.</p>}
           </section>
@@ -355,7 +663,7 @@ export function SchedulePage() {
                           </span>
                         </div>
                         <div className="space-y-1.5">
-                          {items.map(a => chipFor(a, false))}
+                          {cellContent(emp.id, d, false, false)}
                           <button type="button" onClick={() => setCreating({ employee_id: emp.id, day: d })}
                             className="w-full min-h-10 inline-flex items-center justify-center gap-1 text-sm text-blue-700 border border-dashed border-slate-300 rounded-lg hover:bg-blue-50"
                             aria-label={`Dodaj nalog: ${emp.full_name}, ${formatWeekday(d)}`}>
@@ -388,21 +696,29 @@ export function SchedulePage() {
 }
 
 /** Ćelija tehničar × dan: spremnik kapaciteta uz lijevi rub, nalozi, dodavanje. */
-function DayCell({ id, day, today, narrow, workday, absence, planned, actual, label, onAdd, children }: {
-  id: string; day: string; today: string; narrow: boolean; workday: boolean; absence: Absence | null; planned: number; actual: number; label: string;
+function DayCell({ id, day, today, narrow, workday, absence, planned, actual, label, onAdd, children, compact, team }: {
+  id: string; day: string; today: string; narrow: boolean; workday: boolean; absence: Absence | null; planned: number;
+  /** Upisani sati; izostavljeno (red ekipe) = ne prikazuje se */
+  actual?: number;
+  label: string;
   onAdd: () => void; children: ReactNode;
+  /** Član ispod ekipe: niži red */
+  compact?: boolean;
+  /** Red ekipe */
+  team?: boolean;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id });
   const over = planned > DAY_CAPACITY;
   const past = day < today;
-  const showActual = day <= today && (actual > 0 || past) && planned > 0;
+  const showActual = actual !== undefined && day <= today && (actual > 0 || past) && planned > 0;
   const fill = Math.min(planned / DAY_CAPACITY, 1) * 100;
-  const actualPos = Math.min(actual / DAY_CAPACITY, 1);
+  const actualPos = Math.min((actual ?? 0) / DAY_CAPACITY, 1);
   const wd = workday;
 
   return (
     <div ref={setNodeRef}
-      className={cn('group relative border-b border-l border-slate-100 min-h-28 pl-5 pr-2 py-2 flex flex-col gap-1.5 transition-colors',
+      className={cn('group relative border-b border-l border-slate-100 pl-5 pr-2 py-2 flex flex-col gap-1.5 transition-colors',
+        compact ? 'min-h-16 bg-slate-50/40' : 'min-h-28', team && 'bg-blue-50/30 border-b-slate-200',
         !wd && 'bg-slate-50/70', day === today && 'bg-blue-50/30', absence && ABSENCE_TONE[absence.kind].approved, isOver && 'bg-blue-50 ring-2 ring-inset ring-blue-400')}>
       {absence && <span className="text-[11px] font-semibold">{ABSENCE_LABEL[absence.kind]}{planned > 0 && <span className="font-normal"> · sukob s planom</span>}</span>}
       {/* Spremnik: plan puni stupac do 8 h, crtica = upisano */}
@@ -421,7 +737,7 @@ function DayCell({ id, day, today, narrow, workday, absence, planned, actual, la
         {planned > 0 ? (
           <span className={cn('text-[11px] tabular-nums', over ? 'text-amber-800 font-semibold' : 'text-slate-600')}>
             {over && <AlertTriangle size={11} className="inline -mt-0.5 mr-0.5" aria-hidden="true" />}
-            {showActual ? `${short(actual)} od ${short(planned)}` : short(planned)}
+            {showActual ? `${short(actual ?? 0)} od ${short(planned)}` : short(planned)}
             {over && <span className="sr-only">, više od {DAY_CAPACITY} h</span>}
           </span>
         ) : <span />}
@@ -440,16 +756,23 @@ const CHIP: Record<AssignmentState, string> = {
   missed: 'bg-red-50 border-red-300 text-red-900',
 };
 
-function AssignmentChip({ a, place, state, draggable, staff, onOpen, onMove, onRemove }: {
-  a: PlanAssignment; place: string; state: AssignmentState; draggable: boolean; staff: Profile[];
-  onOpen: () => void; onMove: (emp: string, day: string) => void; onRemove: () => void;
+function AssignmentChip({ dragId, a, team, present, place, state, draggable, staff, onOpen, onShift, onReassign, onToggleMember, onRemove }: {
+  dragId: string; a: PlanAssignment; team: CrewMember[]; present: number; place: string; state: AssignmentState; draggable: boolean; staff: Profile[];
+  onOpen: () => void; onShift: (dir: 1 | -1) => void; onReassign?: (emp: string) => void;
+  onToggleMember: (emp: string) => void; onRemove: () => void;
 }) {
-  const { setNodeRef, listeners, attributes, isDragging } = useDraggable({ id: `${draggable ? 'a' : 'm'}:${a.id}`, disabled: !draggable }); // mobilna kopija ne smije dijeliti ID
+  const { setNodeRef, listeners, attributes, isDragging } = useDraggable({ id: draggable ? dragId : `m:${dragId}`, disabled: !draggable }); // mobilna kopija ne smije dijeliti ID
   const o = a.work_orders;
+  const multi = team.length > 1;
+  const inCrew = new Set(team.map(m => m.id));
   const stateText = state === 'done' ? 'upisano' : state === 'missed' ? 'bez unosa' : 'planirano';
+  const teamText = multi
+    ? `, tehničari: ${team.map(m => `${m.name}${m.away ? ` (${ABSENCE_LABEL[m.away.kind].toLowerCase()})` : ''}`).join(', ')}`
+    : '';
   return (
     <div ref={setNodeRef}
-      className={cn('group/chip relative flex items-stretch rounded-lg border text-left shadow-[0_1px_0_rgba(15,23,42,0.04)]', CHIP[state], isDragging && 'opacity-40')}>
+      className={cn('group/chip relative flex flex-col rounded-lg border text-left shadow-[0_1px_0_rgba(15,23,42,0.04)]', CHIP[state], isDragging && 'opacity-40')}>
+      <div className="flex items-stretch">
       {draggable && (
         <button type="button" {...listeners} {...attributes}
           aria-label={`Premjesti: ${o.title}, ${place}`}
@@ -469,8 +792,25 @@ function AssignmentChip({ a, place, state, draggable, staff, onOpen, onMove, onR
           <span className="truncate">{o.title}</span>
           <span className="shrink-0 tabular-nums">· {short(Number(a.planned_hours))}</span>
         </span>
-        <span className="sr-only">, {KIND_LABEL[o.kind]}, {stateText}</span>
+        <span className="sr-only">, {KIND_LABEL[o.kind]}, {stateText}{teamText}</span>
       </button>
+      </div>
+      {multi && (
+        <div className={cn('flex items-center justify-between gap-1 pr-2 pb-1.5', draggable ? 'pl-3.5' : 'pl-2.5')}>
+          <span className="flex -space-x-1">
+            {team.map(m => draggable
+              ? <AvatarHandle key={m.id} member={m} />
+              : <PersonAvatar key={m.id} name={m.name} color={m.color} size="xs" faded={!!m.away}
+                  title={`${m.name}${m.away ? ` · ${ABSENCE_LABEL[m.away.kind]}` : ''}`} />)}
+          </span>
+          {present < team.length && (
+            <span className={cn('text-[10px] font-semibold tabular-nums', state === 'done' ? 'text-slate-300' : 'text-amber-800')}
+              title={`${present} od ${team.length} tehničara radi taj dan`}>
+              {present}/{team.length}
+            </span>
+          )}
+        </div>
+      )}
       <DropdownMenu.Root>
         <DropdownMenu.Trigger aria-label={`Radnje: ${o.title}, ${place}`}
           className={cn('absolute top-0.5 right-0.5 w-6 h-6 inline-flex items-center justify-center rounded-md', state === 'done' ? 'text-slate-400 hover:text-white hover:bg-slate-700' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100')}>
@@ -479,27 +819,94 @@ function AssignmentChip({ a, place, state, draggable, staff, onOpen, onMove, onR
         <DropdownMenu.Portal>
           <DropdownMenu.Content align="end" sideOffset={4} collisionPadding={12}
             className="z-50 min-w-56 bg-white border border-slate-200 rounded-xl shadow-xl p-1.5">
-            <MenuItem icon={ArrowLeft} onSelect={() => onMove(a.employee_id, shiftWorkday(a.day, -1))}>Prethodni radni dan</MenuItem>
-            <MenuItem icon={ArrowRight} onSelect={() => onMove(a.employee_id, shiftWorkday(a.day, 1))}>Sljedeći radni dan</MenuItem>
+            <MenuItem icon={ArrowLeft} onSelect={() => onShift(-1)}>{multi ? 'Svi na prethodni radni dan' : 'Prethodni radni dan'}</MenuItem>
+            <MenuItem icon={ArrowRight} onSelect={() => onShift(1)}>{multi ? 'Svi na sljedeći radni dan' : 'Sljedeći radni dan'}</MenuItem>
+            {onReassign && (
+              <DropdownMenu.Sub>
+                <DropdownMenu.SubTrigger className="flex items-center gap-3 px-3 py-2 min-h-10 rounded-lg text-sm text-slate-800 outline-none cursor-pointer data-[highlighted]:bg-slate-100 data-[state=open]:bg-slate-100">
+                  <UserRound size={15} className="text-slate-500" aria-hidden="true" /> Drugom tehničaru
+                </DropdownMenu.SubTrigger>
+                <DropdownMenu.Portal>
+                  <DropdownMenu.SubContent sideOffset={4} collisionPadding={12} className="z-50 min-w-48 bg-white border border-slate-200 rounded-xl shadow-xl p-1.5">
+                    {staff.filter(e => e.id !== a.employee_id).map(e => (
+                      <MenuItem key={e.id} icon={UserRound} onSelect={() => onReassign(e.id)}>{e.full_name}</MenuItem>
+                    ))}
+                  </DropdownMenu.SubContent>
+                </DropdownMenu.Portal>
+              </DropdownMenu.Sub>
+            )}
             <DropdownMenu.Sub>
               <DropdownMenu.SubTrigger className="flex items-center gap-3 px-3 py-2 min-h-10 rounded-lg text-sm text-slate-800 outline-none cursor-pointer data-[highlighted]:bg-slate-100 data-[state=open]:bg-slate-100">
-                <UserRound size={15} className="text-slate-500" aria-hidden="true" /> Drugom tehničaru
+                <Users size={15} className="text-slate-500" aria-hidden="true" /> {multi ? `Tehničari (${team.length})` : 'Dodaj tehničara'}
               </DropdownMenu.SubTrigger>
               <DropdownMenu.Portal>
-                <DropdownMenu.SubContent sideOffset={4} collisionPadding={12} className="z-50 min-w-48 bg-white border border-slate-200 rounded-xl shadow-xl p-1.5">
-                  {staff.filter(e => e.id !== a.employee_id).map(e => (
-                    <MenuItem key={e.id} icon={UserRound} onSelect={() => onMove(e.id, a.day)}>{e.full_name}</MenuItem>
-                  ))}
+                <DropdownMenu.SubContent sideOffset={4} collisionPadding={12} className="z-50 min-w-52 bg-white border border-slate-200 rounded-xl shadow-xl p-1.5">
+                  {staff.map(e => {
+                    const checked = inCrew.has(e.id);
+                    const last = checked && team.length === 1;
+                    return (
+                      <DropdownMenu.CheckboxItem key={e.id} checked={checked} disabled={last}
+                        onCheckedChange={() => onToggleMember(e.id)}
+                        className="flex items-center gap-3 px-3 py-2 min-h-10 rounded-lg text-sm text-slate-800 outline-none cursor-pointer data-[highlighted]:bg-slate-100 data-[disabled]:text-slate-500 data-[disabled]:cursor-default">
+                        <span className={cn('w-4 h-4 rounded border inline-flex items-center justify-center shrink-0', checked ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-400')}>
+                          <DropdownMenu.ItemIndicator><CheckCircle2 size={12} aria-hidden="true" /></DropdownMenu.ItemIndicator>
+                        </span>
+                        {e.full_name}
+                      </DropdownMenu.CheckboxItem>
+                    );
+                  })}
                 </DropdownMenu.SubContent>
               </DropdownMenu.Portal>
             </DropdownMenu.Sub>
             <MenuItem icon={CalendarPlus} onSelect={onOpen}>Otvori nalog</MenuItem>
             <DropdownMenu.Separator className="my-1 h-px bg-slate-100" />
-            <MenuItem icon={Trash2} onSelect={onRemove} danger>Ukloni iz dana</MenuItem>
+            <MenuItem icon={Trash2} onSelect={onRemove} danger>{multi ? 'Ukloni iz dana (svi tehničari)' : 'Ukloni iz dana'}</MenuItem>
           </DropdownMenu.Content>
         </DropdownMenu.Portal>
       </DropdownMenu.Root>
     </div>
+  );
+}
+
+/** Inicijali na kartici: povlačenjem na drugog tehničara zamjenjuje se osoba na nalogu. */
+function AvatarHandle({ member }: { member: CrewMember }) {
+  const { setNodeRef, listeners, attributes, isDragging } = useDraggable({ id: `p:${member.asgId}` });
+  const awayText = member.away ? ` (${ABSENCE_LABEL[member.away.kind].toLowerCase()})` : '';
+  return (
+    <button ref={setNodeRef} type="button" {...listeners} {...attributes}
+      aria-label={`Zamijeni tehničara: ${member.name}${awayText}. Povucite na drugog tehničara.`}
+      title={`${member.name}${awayText} · povucite na drugog tehničara za zamjenu`}
+      className={cn('rounded-full cursor-grab active:cursor-grabbing touch-none hover:z-10 hover:scale-110 transition-transform', isDragging && 'opacity-40')}>
+      <PersonAvatar name={member.name} color={member.color} size="xs" faded={!!member.away} title="" />
+    </button>
+  );
+}
+
+/**
+ * Član ekipe u svom redu: bez ponovljene kartice, samo zauzetost. Više naloga iste ekipe
+ * (ili istog voditelja) tog dana spaja se u jednu traku.
+ */
+function CrewBand({ who, whoFull, items, placeOf, onOpen }: {
+  who: string; whoFull: string; items: PlanAssignment[]; placeOf: (siteId: string | null) => string; onOpen: (orderId: string) => void;
+}) {
+  const hours = items.reduce((s, a) => s + Number(a.planned_hours), 0);
+  const label = items.length === 1 ? placeOf(items[0].work_orders.site_id) : `${items.length} naloga`;
+  const list = items.map(a => `${placeOf(a.work_orders.site_id)} · ${a.work_orders.title}`).join('\n');
+  const body = (
+    <>
+      <Users size={11} className="shrink-0" aria-hidden="true" />
+      <span className="truncate">{who} · {label}</span>
+      <span className="shrink-0 tabular-nums font-normal">· {short(hours)}</span>
+      <span className="sr-only">. Kartica naloga je u redu: {whoFull}. {list.replace(/\n/g, '; ')}</span>
+    </>
+  );
+  const cls = 'w-full flex items-center gap-1 rounded-lg border border-dashed border-blue-300 bg-blue-50/60 px-2 py-1 text-[11px] font-semibold text-blue-900 text-left';
+  return items.length === 1 ? (
+    <button type="button" onClick={() => onOpen(items[0].work_order_id)} title={`Kartica je u redu: ${whoFull}\n${list}`} className={cn(cls, 'hover:bg-blue-50')}>
+      {body}
+    </button>
+  ) : (
+    <div title={`Kartica je u redu: ${whoFull}\n${list}`} className={cls}>{body}</div>
   );
 }
 

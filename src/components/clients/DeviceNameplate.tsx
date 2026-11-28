@@ -57,7 +57,13 @@ export function DeviceNameplate({ device, service, onOpen, static: isStatic }: P
     </div>
   );
 
-  const bar = <ServiceBar state={st.state} days={st.days} next={service?.next ?? null} last={service?.last ?? null} />;
+  const noService = device.service_interval_months === 0;
+  const bar = noService
+    ? <p className="mx-2 -mt-px px-3 py-1.5 text-xs border border-t-0 rounded-b-md flex items-center gap-1.5 bg-white text-slate-500 border-slate-200">
+        <Clock size={12} aria-hidden="true" className="shrink-0" />
+        <span className="truncate">Ne treba servis</span>
+      </p>
+    : <ServiceBar state={st.state} days={st.days} next={service?.next ?? null} last={service?.last ?? null} />;
 
   if (isStatic || !onOpen) return <div>{plate}{bar}</div>;
 
@@ -66,7 +72,7 @@ export function DeviceNameplate({ device, service, onOpen, static: isStatic }: P
       type="button"
       onClick={onOpen}
       className="group block w-full text-left rounded-lg transition-transform hover:-translate-y-px focus-visible:outline-offset-4"
-      aria-label={`Uređaj: ${title}${device.placement ? `, ${device.placement}` : ''}. ${serviceText(st.state, st.days)}`}
+      aria-label={`Uređaj: ${title}${device.placement ? `, ${device.placement}` : ''}. ${noService ? 'Ne treba servis' : serviceText(st.state, st.days)}`}
     >
       {plate}
       {bar}

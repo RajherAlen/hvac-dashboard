@@ -143,6 +143,69 @@ export function useMoveAssignment() {
   });
 }
 
+/** Premještanje više dodjela odjednom (npr. cijele ekipe naloga na drugi dan). */
+export function useMoveAssignments() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: async (moves: { id: string; employee_id: string; day: string }[]) => {
+      const results = await Promise.all(moves.map(({ id, employee_id, day }) =>
+        supabase.from('work_order_assignments').update({ employee_id, day }).eq('id', id)));
+      const failed = results.find(r => r.error);
+      if (failed?.error) throw failed.error;
+    },
+    onSettled: invalidate,
+  });
+}
+
+/**
+ * Postavlja tko radi nalog određenog dana (npr. dodjela ekipi): postojeće dodjele članova
+ * premješta na taj dan, višak briše, nedostajuće dodaje.
+ */
+export function useSetOrderDayCrew() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: async ({ work_order_id, from, day, employee_ids, planned_hours }: {
+      work_order_id: string;
+      /** Dosadašnje dodjele naloga koje se preslažu (npr. sve s dana s kojeg je nalog povučen) */
+      from: { id: string; employee_id: string }[];
+      day: string;
+      employee_ids: string[];
+      planned_hours: number;
+    }) => {
+      const target = new Set(employee_ids);
+      const keep = from.filter(a => target.has(a.employee_id));
+      const drop = from.filter(a => !target.has(a.employee_id)).map(a => a.id);
+      const kept = new Set(keep.map(a => a.employee_id));
+      const add = employee_ids.filter(id => !kept.has(id));
+      if (drop.length) {
+        const { error } = await supabase.from('work_order_assignments').delete().in('id', drop);
+        if (error) throw error;
+      }
+      for (const a of keep) {
+        const { error } = await supabase.from('work_order_assignments').update({ employee_id: a.employee_id, day }).eq('id', a.id);
+        if (error) throw error;
+      }
+      if (add.length) {
+        const { error } = await supabase.from('work_order_assignments')
+          .insert(add.map(employee_id => ({ work_order_id, employee_id, day, planned_hours })));
+        if (error) throw error;
+      }
+    },
+    onSettled: invalidate,
+  });
+}
+
+export function useRemoveAssignments() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: async (ids: string[]) => {
+      const { error } = await supabase.from('work_order_assignments').delete().in('id', ids);
+      if (error) throw error;
+    },
+    onSuccess: invalidate,
+  });
+}
+
 /** Dodjela postojećeg naloga (npr. iz "Na čekanju") tehničaru za dan. */
 export function useAddAssignment() {
   const invalidate = useInvalidate();

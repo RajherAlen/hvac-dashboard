@@ -2,10 +2,37 @@ import { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Dialog } from 'radix-ui';
 import { Menu, X, Wind } from 'lucide-react';
+import { toast } from 'sonner';
 import { Sidebar } from './Sidebar';
+import { WhatsNewDialog } from '../whats-new/WhatsNewDialog';
+import { useAuth } from '../../hooks/useAuth';
+import { useCrews } from '../../hooks/useCrews';
+import { FEATURE_EKIPE, dismissForSession, hasSeenFeature, isDismissedThisSession, markFeatureSeen } from '../../lib/features';
 
 export function AppShell() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // "Što je novo" – najava Ekipa, samo za admina i samo kad je modul ekipa uključen (migracija pokrenuta)
+  const { role, user } = useAuth();
+  const isAdmin = role === 'admin';
+  const crews = useCrews(isAdmin);
+  const whatsNewAvailable = isAdmin && crews.data != null;
+  const [whatsNewManual, setWhatsNewManual] = useState(false);
+  const [whatsNewClosed, setWhatsNewClosed] = useState(false);
+  const whatsNewAuto = whatsNewAvailable && !whatsNewClosed
+    && !hasSeenFeature(user, FEATURE_EKIPE) && !isDismissedThisSession(FEATURE_EKIPE);
+  const showWhatsNew = whatsNewManual || whatsNewAuto;
+
+  const dismissWhatsNew = (permanent: boolean) => {
+    setWhatsNewManual(false);
+    setWhatsNewClosed(true);
+    if (permanent) {
+      markFeatureSeen(user, FEATURE_EKIPE).catch(() => toast.error('Nije spremljeno – najava će se možda ponovno prikazati.'));
+    } else {
+      dismissForSession(FEATURE_EKIPE);
+    }
+  };
+  const openWhatsNew = whatsNewAvailable ? () => { setSidebarOpen(false); setWhatsNewManual(true); } : undefined;
 
   return (
     <div className="flex h-screen h-dvh overflow-hidden bg-slate-50">
@@ -18,7 +45,7 @@ export function AppShell() {
 
       {/* Desktop sidebar */}
       <div className="hidden md:flex md:shrink-0">
-        <Sidebar />
+        <Sidebar onWhatsNew={openWhatsNew} />
       </div>
 
       {/* Mobilni izbornik – Radix Dialog: Escape, focus trap, vraćanje fokusa */}
@@ -33,7 +60,7 @@ export function AppShell() {
             >
               <X size={18} aria-hidden="true" />
             </Dialog.Close>
-            <Sidebar onClose={() => setSidebarOpen(false)} />
+            <Sidebar onClose={() => setSidebarOpen(false)} onWhatsNew={openWhatsNew} />
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
@@ -65,6 +92,8 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+
+      {showWhatsNew && <WhatsNewDialog onDismiss={dismissWhatsNew} />}
     </div>
   );
 }

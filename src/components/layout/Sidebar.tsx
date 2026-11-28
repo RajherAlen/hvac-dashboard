@@ -13,6 +13,8 @@ import {
   CalendarRange,
   PieChart,
   CalendarOff,
+  UsersRound,
+  Sparkles,
 } from 'lucide-react';
 import { usePendingAbsences } from '../../hooks/useAbsences';
 import { useClientDirectory } from '../../hooks/useClients';
@@ -23,6 +25,8 @@ import { cn } from '../../lib/utils';
 
 interface SidebarProps {
   onClose?: () => void;
+  /** Otvara "Što je novo"; zadano samo za admina kad je najava dostupna. */
+  onWhatsNew?: () => void;
 }
 
 type NavItem = { to: string; icon: typeof Users; label: string; badge?: 'pendingAbsences' };
@@ -41,6 +45,7 @@ const adminSections: NavSection[] = [
     title: 'Planiranje',
     links: [
       { to: '/raspored', icon: CalendarRange, label: 'Raspored' },
+      { to: '/ekipe', icon: UsersRound, label: 'Ekipe' },
       { to: '/servisi', icon: Wrench, label: 'Servisi' },
       { to: '/odsutnosti', icon: CalendarOff, label: 'Odsutnosti', badge: 'pendingAbsences' },
     ],
@@ -71,9 +76,9 @@ const employeeSections: NavSection[] = [
 ];
 
 /** Stranice koje ovise o migraciji za klijente. */
-const NEEDS_CLIENTS = ['/klijenti', '/servisi', '/raspored', '/sati'];
+const NEEDS_CLIENTS = ['/klijenti', '/servisi', '/raspored', '/ekipe', '/sati'];
 
-export function Sidebar({ onClose }: SidebarProps) {
+export function Sidebar({ onClose, onWhatsNew }: SidebarProps) {
   const { role, user, signOut } = useAuth();
   const { data: profile, isLoading: profileLoading } = useEmployee(user?.id);
   const [showProfile, setShowProfile] = useState(false);
@@ -157,6 +162,17 @@ export function Sidebar({ onClose }: SidebarProps) {
             <p className="text-xs text-slate-400">Uredi profil</p>
           </div>
         </button>
+
+        {role === 'admin' && onWhatsNew && (
+          <button
+            type="button"
+            onClick={onWhatsNew}
+            className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
+          >
+            <Sparkles size={18} aria-hidden="true" />
+            Što je novo
+          </button>
+        )}
 
         {/* Sign out */}
         <button

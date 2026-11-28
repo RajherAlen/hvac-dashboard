@@ -28,6 +28,7 @@ import { ServicesPage } from './pages/services/ServicesPage';
 import { SchedulePage } from './pages/schedule/SchedulePage';
 import { HoursValuePage } from './pages/admin/HoursValuePage';
 import { AbsencesPage } from './pages/admin/AbsencesPage';
+import { CrewsPage } from './pages/admin/CrewsPage';
 import { MyAbsencesPage } from './pages/employee/MyAbsencesPage';
 
 function Spinner() {
@@ -101,6 +102,7 @@ function AppRoutes() {
         <Route path="/klijenti/povezivanje" element={<LinkLegacyPage />} />
         <Route path="/servisi" element={<ServicesPage />} />
         <Route path="/raspored" element={<SchedulePage />} />
+        <Route path="/ekipe" element={<CrewsPage />} />
         <Route path="/odsutnosti" element={<AbsencesPage />} />
         <Route path="/sati" element={<HoursValuePage />} />
       </Route>
