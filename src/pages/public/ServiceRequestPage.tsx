@@ -9,7 +9,7 @@ import { Field, FormError, Spinner } from '../../components/ui/form';
 import { inputClass } from '../../components/ui/styles';
 
 /** Naziv i telefon tvrtke na formi (neobavezno, iz .env). */
-const COMPANY_NAME = (import.meta.env.VITE_COMPANY_NAME as string | undefined)?.trim() || 'Thermo-Vent';
+const COMPANY_NAME = (import.meta.env.VITE_COMPANY_NAME as string | undefined)?.trim() || 'Thermo-Vent Đakovo';
 const COMPANY_PHONE = (import.meta.env.VITE_COMPANY_PHONE as string | undefined)?.trim() || '';
 
 const KINDS = Object.keys(REQUEST_KIND_LABEL) as RequestKind[];

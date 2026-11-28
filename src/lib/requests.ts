@@ -8,7 +8,7 @@ export const REQUEST_FORM_PATH = '/zahtjev';
  * Dodaje se linku (?v=…) jer WhatsApp/Viber pamte pregled linka (naslov, opis).
  * Kad se promijeni naslov/opis u zahtjev.html, povisiti broj da se pregled osvježi.
  */
-export const REQUEST_LINK_VERSION = 2;
+export const REQUEST_LINK_VERSION = 3;
 
 export const REQUEST_KIND_LABEL: Record<RequestKind, string> = {
   servis: 'Redovni servis',
