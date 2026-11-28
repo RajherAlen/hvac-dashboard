@@ -1,6 +1,8 @@
 import { useId, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { useSaveCrew, type Crew } from '../../hooks/useCrews';
+import { useSaveCrew, useVehicles, useAddVehicle, type Crew } from '../../hooks/useCrews';
+
+const ADD_VEHICLE = '__add__';
 import { useStaffDirectory } from '../../hooks/useStaffDirectory';
 import { employeeColorMap } from '../../lib/colors';
 import { errorMessage } from '../../lib/errors';
@@ -35,6 +37,31 @@ export function CrewFormDialog({ crew, initialMembers, onClose, onSaved }: {
   const [members, setMembers] = useState<string[]>(crew?.members ?? initialMembers ?? []);
   const [lead, setLead] = useState<string>(crew?.lead_id ?? '');
   const [vehicle, setVehicle] = useState(crew?.vehicle ?? '');
+  const vehiclesQ = useVehicles();
+  const addVehicle = useAddVehicle();
+  const [addingVehicle, setAddingVehicle] = useState(false);
+  const [newVehicle, setNewVehicle] = useState('');
+  const [vehicleError, setVehicleError] = useState<string | null>(null);
+  // Popis + trenutno vozilo ekipe ako (još) nije na popisu
+  const vehicleOptions = useMemo(() => {
+    const names = (vehiclesQ.data ?? []).map(v => v.name);
+    const cur = vehicle.trim();
+    return cur && !names.some(n => n.toLowerCase() === cur.toLowerCase()) ? [cur, ...names] : names;
+  }, [vehiclesQ.data, vehicle]);
+  const addVehicleNow = async () => {
+    const n = newVehicle.trim();
+    if (n.length < 2) { setVehicleError('Upišite naziv vozila'); return; }
+    const existing = (vehiclesQ.data ?? []).find(v => v.name.toLowerCase() === n.toLowerCase());
+    if (existing) { setVehicle(existing.name); setAddingVehicle(false); return; }
+    try {
+      const v = await addVehicle.mutateAsync(n);
+      setVehicle(v.name);
+      setAddingVehicle(false);
+      toast.success('Vozilo dodano na popis');
+    } catch (err) {
+      setVehicleError(errorMessage(err));
+    }
+  };
   const [temporary, setTemporary] = useState(!!crew?.valid_until);
   const [until, setUntil] = useState(crew?.valid_until ?? todayISO());
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -103,9 +130,42 @@ export function CrewFormDialog({ crew, initialMembers, onClose, onSaved }: {
           )}
         </Field>
 
-        <Field label="Vozilo" optional>
-          {p => <input {...p} value={vehicle} onChange={e => setVehicle(e.target.value)} placeholder="npr. Kombi OS-123-AB" className={inputClass(false)} />}
-        </Field>
+        {vehiclesQ.data == null ? (
+          <Field label="Vozilo" optional>
+            {p => <input {...p} value={vehicle} onChange={e => setVehicle(e.target.value)} placeholder="npr. Kombi OS-123-AB" className={inputClass(false)} />}
+          </Field>
+        ) : addingVehicle ? (
+          <Field label="Novo vozilo" error={vehicleError ?? undefined} hint="Vozilo ostaje na popisu za sve ekipe.">
+            {p => (
+              <div className="flex gap-2">
+                <input {...p} value={newVehicle} autoFocus maxLength={60} placeholder="npr. Kombi OS-123-AB"
+                  onChange={e => { setNewVehicle(e.target.value); setVehicleError(null); }}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void addVehicleNow(); } if (e.key === 'Escape') { e.stopPropagation(); setAddingVehicle(false); } }}
+                  className={inputClass(!!vehicleError, 'flex-1 min-w-0')} />
+                <button type="button" onClick={() => void addVehicleNow()} disabled={addVehicle.isPending}
+                  className="shrink-0 min-h-10 sm:min-h-9 px-3 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60 rounded-lg">
+                  Dodaj
+                </button>
+                <button type="button" onClick={() => { setAddingVehicle(false); setVehicleError(null); }}
+                  className="shrink-0 min-h-10 sm:min-h-9 px-3 text-sm font-medium text-slate-700 border border-slate-300 hover:bg-slate-50 rounded-lg">
+                  Odustani
+                </button>
+              </div>
+            )}
+          </Field>
+        ) : (
+          <Field label="Vozilo" optional>
+            {p => (
+              <select {...p} value={vehicle}
+                onChange={e => { if (e.target.value === ADD_VEHICLE) { setNewVehicle(''); setAddingVehicle(true); } else setVehicle(e.target.value); }}
+                className={inputClass(false)}>
+                <option value="">Bez vozila</option>
+                {vehicleOptions.map(v => <option key={v} value={v}>{v}</option>)}
+                <option value={ADD_VEHICLE}>+ Dodaj vozilo…</option>
+              </select>
+            )}
+          </Field>
+        )}
 
         <div>
           <p id={kindLabel} className="text-sm font-medium text-slate-700 mb-1">Trajanje</p>

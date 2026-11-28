@@ -395,6 +395,12 @@ export type Database = {
         Relationships: []
       }
       /** Postoji tek nakon migracije 20261113_crews.sql */
+      vehicles: {
+        Row: { id: string; name: string; created_at: string }
+        Insert: { id?: string; name: string; created_at?: string }
+        Update: { name?: string }
+        Relationships: []
+      }
       crews: {
         Row: {
           id: string

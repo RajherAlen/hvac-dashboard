@@ -40,6 +40,41 @@ export function useCrews(enabled = true) {
   });
 }
 
+export const VEHICLES_KEY = 'vehicles';
+export type Vehicle = { id: string; name: string };
+
+/** Popis vozila za odabir u ekipi. `data === null` → tablica ne postoji (migracija 20261115). */
+export function useVehicles() {
+  return useQuery({
+    queryKey: [VEHICLES_KEY],
+    staleTime: 5 * 60_000,
+    retry: (count, err) => !isMissingAuditSchema(err) && count < 2,
+    queryFn: async (): Promise<Vehicle[] | null> => {
+      const { data, error } = await supabase.from('vehicles').select('id, name').order('name');
+      if (error) {
+        if (isMissingAuditSchema(error) || /vehicles/.test(error.message ?? '') && /does not exist|could not find/i.test(error.message ?? '')) return null;
+        throw error;
+      }
+      return data ?? [];
+    },
+  });
+}
+
+export function useAddVehicle() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (name: string) => {
+      const { data, error } = await supabase.from('vehicles').insert({ name: name.trim() }).select('id, name').single();
+      if (error) {
+        if (error.code === '23505') throw new Error('To vozilo već postoji na popisu.');
+        throw error;
+      }
+      return data as Vehicle;
+    },
+    onSuccess: () => client.invalidateQueries({ queryKey: [VEHICLES_KEY] }),
+  });
+}
+
 export interface SaveCrewInput {
   id?: string;
   name: string;
